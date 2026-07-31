@@ -53,6 +53,7 @@
     newsQuery: null,       // active news topic search (null = live feed)
     chatMessages: [],      // [{ role, content }]
     chatBusy: false,
+    ttsTrack: null,        // { text, title } — current audio source for voice/rate restart
   };
 
   const CHAT_SUGGESTS = [
@@ -78,6 +79,7 @@
     window.addEventListener('offline', updateConnection);
     registerSW();
     refreshLibraryCount();
+    initTts();
     initLive();
     if (location.hash.startsWith('#report=')) openReportFromHash(location.hash.slice(8));
   }
@@ -269,6 +271,143 @@
         sendChat();
       }
     });
+
+    // TTS listen buttons (event delegation: live cards, result cards)
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('[data-listen]');
+      if (!btn) return;
+      const kind = btn.dataset.listen;
+      const i = Number(btn.dataset.i || 0);
+      if (kind === 'live') {
+        const story = state.liveStories[i];
+        if (story) listenToNews(story, btn);
+      } else if (kind === 'results') {
+        const r = state.results[i];
+        if (r) listenToResult(r, btn);
+      }
+    });
+    $('#listenReportBtn').addEventListener('click', listenToReport);
+
+    // player bar controls
+    $('#ttsPauseBtn').addEventListener('click', toggleTtsPause);
+    $('#ttsStopBtn').addEventListener('click', stopTts);
+    $('#ttsVoice').addEventListener('change', e => {
+      TTS.setSettings({ voice: e.target.value });
+      restartTtsTrack();
+    });
+    $('#ttsRate').addEventListener('change', e => {
+      TTS.setSettings({ rate: Number(e.target.value) });
+      restartTtsTrack();
+    });
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = populateTtsVoices;
+    }
+  }
+
+  // ═══════════ TEXT-TO-SPEECH ═══════════
+  function initTts() {
+    if (!TTS.supported()) return;
+    TTS.init();
+    const rate = TTS.getSettings().rate || 1;
+    $('#ttsRate').value = String(rate);
+    populateTtsVoices();
+  }
+
+  function populateTtsVoices() {
+    const sel = $('#ttsVoice');
+    if (!sel) return;
+    const voices = TTS.voices();
+    const saved = TTS.getSettings().voice;
+    sel.innerHTML = voices.map(v =>
+      `<option value="${UI.esc(v.name)}" ${v.name === saved ? 'selected' : ''}>${UI.esc(v.name)} (${UI.esc(v.lang)})</option>`).join('');
+    if (saved && voices.some(v => v.name === saved)) sel.value = saved;
+    else if (voices.length) {
+      const def = TTS.defaultVoice();
+      if (def) sel.value = def.name;
+    }
+  }
+
+  function showTtsPlayer(title) {
+    $('#ttsTitle').textContent = title;
+    $('#ttsPlayer').hidden = false;
+    $('#ttsPlayer').classList.remove('paused');
+  }
+
+  function hideTtsPlayer() {
+    $('#ttsPlayer').hidden = true;
+    $$('[data-listen].playing').forEach(b => b.classList.remove('playing'));
+  }
+
+  function speakTrack(text, title, onStateChange) {
+    if (!TTS.supported()) { UI.toast('Audio isn\'t supported in this browser.', 'err'); return; }
+    state.ttsTrack = { text, title };
+    showTtsPlayer(title);
+    // hide the player + clear the highlight when the queue drains naturally
+    const done = mode => {
+      if (mode === 'ended') {
+        hideTtsPlayer();
+        state.ttsTrack = null;
+      }
+      if (onStateChange) onStateChange(mode);
+    };
+    const ok = TTS.speak(text, { title, onStateChange: done });
+    if (!ok) UI.toast('Nothing to play for this item.', 'info');
+  }
+
+  function restartTtsTrack() {
+    if (!state.ttsTrack || !TTS.state()) return;
+    // re-speak from the top with the new voice/rate
+    const { text, title } = state.ttsTrack;
+    speakTrack(text, title);
+  }
+
+  function toggleTtsPause() {
+    const st = TTS.state();
+    if (!st) return;
+    if (st.paused) { TTS.resume(); $('#ttsPlayer').classList.remove('paused'); }
+    else { TTS.pause(); $('#ttsPlayer').classList.add('paused'); }
+  }
+
+  function stopTts() {
+    TTS.stop();
+    hideTtsPlayer();
+    state.ttsTrack = null;
+  }
+
+  // News story: speak headline + snippet instantly, then append full article text
+  async function listenToNews(story, btn) {
+    const headline = `${story.title || ''}. ${story.snippet || ''}`;
+    const title = story.title || 'News story';
+    speakTrack(headline, title);
+    markListening(btn);
+    // Phase 2: seamlessly append full article text via the serverless reader
+    try {
+      if (story.url && typeof Content !== 'undefined' && state.settings.contentReader !== false) {
+        const texts = await Content.readArticles([story.url]);
+        const full = texts && texts[story.url];
+        // append when idle (headline already finished) or while this same track plays;
+        // avoid contaminating a different track if the user switched stories mid-fetch
+        if (full && (!TTS.state() || TTS.state().title === title)) TTS.append(` ${full}`);
+      }
+    } catch { /* audio stays with headline+snippet */ }
+  }
+
+  // Research result: speak title + snippet
+  function listenToResult(r, btn) {
+    const text = `${r.title || ''}. ${r.snippet || ''}`;
+    speakTrack(text, r.title || 'Search result');
+    markListening(btn);
+  }
+
+  // AI report: speak the full markdown (cleaned) — Aurora-authored, no licensing issue
+  function listenToReport() {
+    if (!state.reportMarkdown) { UI.toast('No report to listen to yet.', 'info'); return; }
+    speakTrack(state.reportMarkdown, state.reportTitle || 'Research report');
+  }
+
+  function markListening(btn) {
+    $$('[data-listen].playing').forEach(b => b.classList.remove('playing'));
+    if (btn) btn.classList.add('playing');
   }
 
   // ═══════════ CHAT ═══════════
@@ -478,7 +617,7 @@
       ? `Updated ${UI.timeAgo(state.liveUpdated)} · ${stories.length} stories`
       : '';
     $('#liveEmpty').hidden = stories.length > 0;
-    grid.innerHTML = stories.map(r => `
+    grid.innerHTML = stories.map((r, i) => `
       <article class="live-card">
         <div class="lc-top">
           <span class="lc-outlet"><svg class="ic" aria-hidden="true"><use href="#i-news"/></svg>${UI.esc(r.meta || 'News')}</span>
@@ -489,7 +628,10 @@
         ${r.snippet ? `<p class="lc-snippet">${UI.esc(r.snippet)}</p>` : ''}
         <div class="lc-foot">
           <span class="lc-domain">${UI.esc(UI.domain(r.url))}</span>
-          <a class="lc-open" href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">Read<svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg></a>
+          <span class="lc-foot-actions">
+            <button class="listen-btn" data-listen="live" data-i="${i}" title="Listen"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg>Listen</button>
+            <a class="lc-open" href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">Read<svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg></a>
+          </span>
         </div>
       </article>`).join('');
   }
@@ -641,7 +783,7 @@
     const meta = Search.sourceMeta;
     const list = source === 'all' ? state.results : (state.resultsBySource[source] || []);
 
-    grid.innerHTML = list.map(r => {
+    grid.innerHTML = list.map((r, i) => {
       const m = meta[r.source] || meta.web;
       return `
       <article class="result-card">
@@ -653,7 +795,10 @@
         <p class="rc-snippet">${UI.esc(r.snippet)}</p>
         <div class="rc-foot">
           <span class="rc-domain">${UI.esc(r.meta ? r.meta + ' · ' : '')}${UI.esc(UI.domain(r.url))}</span>
-          <a class="rc-open" href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">Open<svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg></a>
+          <span class="rc-foot-actions">
+            <button class="listen-btn" data-listen="results" data-i="${i}" title="Listen"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg>Listen</button>
+            <a class="rc-open" href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">Open<svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg></a>
+          </span>
         </div>
       </article>`;
     }).join('');
@@ -893,6 +1038,7 @@
       card.addEventListener('click', e => {
         const del = e.target.closest('[data-del]');
         if (del) { e.stopPropagation(); deleteOneReport(del.dataset.del); return; }
+        if (e.target.closest('[data-listen]')) { e.stopPropagation(); return; }
         openSavedReport(card.dataset.id);
       });
     });

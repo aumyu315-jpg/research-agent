@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "netlify dev",
-    "test": "node test-markdown.js && node test-content.js && node test-ai.js && node test-search.js"
+    "test": "node test-markdown.js && node test-content.js && node test-ai.js && node test-search.js && node test-tts.js"
   },
   "engines": {
     "node": ">=18"

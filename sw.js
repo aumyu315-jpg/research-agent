@@ -12,6 +12,7 @@ const SHELL = [
   './js/search.js',
   './js/ai.js',
   './js/content.js',
+  './js/tts.js',
   './js/app.js',
   './manifest.webmanifest',
 ];

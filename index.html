@@ -46,6 +46,10 @@
     <symbol id="i-briefing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-4"/><path d="M9.5 15.5h5"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14"/><path d="M16 5v14"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
   </svg>
 
   <!-- ═══════════ OFFLINE BANNER ═══════════ -->
@@ -269,6 +273,9 @@
           <svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Back
         </button>
         <div class="report-actions">
+          <button class="icon-btn" id="listenReportBtn" title="Listen to report" aria-label="Listen to report">
+            <svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg>
+          </button>
           <button class="icon-btn" id="copyReportBtn" title="Copy markdown">
             <svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>
           </button>
@@ -467,6 +474,41 @@
     </div>
   </div>
 
+  <!-- ═══════════ AUDIO PLAYER BAR ═══════════ -->
+  <div class="tts-player" id="ttsPlayer" role="region" aria-label="Audio player" hidden>
+    <div class="tts-eq" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="tts-info">
+      <span class="tts-now">Now listening</span>
+      <span class="tts-title" id="ttsTitle" aria-live="polite"></span>
+    </div>
+    <div class="tts-controls">
+      <button class="icon-btn" id="ttsPauseBtn" aria-label="Pause" title="Pause">
+        <svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>
+      </button>
+      <button class="icon-btn" id="ttsStopBtn" aria-label="Stop" title="Stop">
+        <svg class="ic" aria-hidden="true"><use href="#i-stop"/></svg>
+      </button>
+    </div>
+    <div class="tts-options">
+      <label class="tts-opt">
+        <span class="tts-opt-label">Voice</span>
+        <select id="ttsVoice" class="select tts-select" aria-label="Voice"></select>
+      </label>
+      <label class="tts-opt">
+        <span class="tts-opt-label">Speed</span>
+        <select id="ttsRate" class="select tts-select" aria-label="Playback speed">
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
   <div class="toast-wrap" id="toastWrap"></div>
 
   <script src="js/ui.js"></script>
@@ -475,6 +517,7 @@
   <script src="js/search.js"></script>
   <script src="js/ai.js"></script>
   <script src="js/content.js"></script>
+  <script src="js/tts.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
