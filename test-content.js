@@ -3,8 +3,8 @@ const fs = require('fs');
 const fnSrc = fs.readFileSync('netlify/functions/aurora.js', 'utf8');
 // The function uses CommonJS `exports.*` — inject the module globals as params
 const mod = { exports: {} };
-const run = new Function('exports', 'module', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml };');
-const { stripTags, decodeEntities, parseDdgHtml } = run(mod.exports, mod);
+const run = new Function('exports', 'module', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS };');
+const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS } = run(mod.exports, mod);
 
 const tests = [
   {
@@ -63,6 +63,69 @@ const tests = [
     name: 'DDG parser returns empty for junk html',
     fn: () => String(parseDdgHtml('<html><body>no results here</body></html>').length),
     expect: ['0'],
+  },
+  {
+    name: 'RSS parser extracts title/link/description/date',
+    fn: () => JSON.stringify(parseRss(
+      '<?xml version="1.0"?><rss><channel><title>Test</title>' +
+      '<item><title>Quantum chip breakthrough</title><link>https://example.com/q</link>' +
+      '<description>Scientists &amp; engineers announced a &lt;b&gt;major&lt;/b&gt; advance.</description>' +
+      '<pubDate>Wed, 30 Jul 2026 10:00:00 GMT</pubDate></item>' +
+      '<item><title>Markets rally</title><link>https://example.com/m</link>' +
+      '<description>Stocks closed higher.</description>' +
+      '<pubDate>Thu, 31 Jul 2026 09:00:00 GMT</pubDate></item></channel></rss>')
+      .map(it => ({ ...it, date: new Date(it.publishedAt).toISOString().slice(0, 10) }))),
+    expect: ['Quantum chip breakthrough', 'example.com/q', 'major', '2026-07-30', 'Markets rally', '2026-07-31'],
+    notExpect: ['&amp;', '<b>'],
+  },
+  {
+    name: 'RSS parser handles Atom entry link and summary',
+    fn: () => JSON.stringify(parseRss(
+      '<?xml version="1.0"?><feed><entry><title>Atom story</title>' +
+      '<link href="https://atom.example/story"/>' +
+      '<summary>An Atom-formatted entry.</summary>' +
+      '<updated>2026-07-29T08:00:00Z</updated></entry></feed>')
+      .map(it => ({ ...it, date: new Date(it.publishedAt).toISOString().slice(0, 10) }))),
+    expect: ['Atom story', 'atom.example/story', 'An Atom-formatted entry.', '2026-07-29'],
+  },
+  {
+    name: 'RSS parser skips empty items and decodes entities',
+    fn: () => JSON.stringify(parseRss(
+      '<rss><channel>' +
+      '<item><title>First &amp; Best</title><link>https://a.example/1</link><description>It&apos;s here</description></item>' +
+      '<item><title></title><link></link></item>' +
+      '</channel></rss>')),
+    expect: ['First & Best', "It's here"],
+    notExpect: ['&amp;', '&apos;', '&lt;'],
+  },
+  {
+    name: 'RSS parser strips html inside CDATA/description',
+    fn: () => JSON.stringify(parseRss(
+      '<rss><channel>' +
+      '<item><title>Clean</title><link>https://c.example/1</link>' +
+      '<description><![CDATA[<p>Hello <b>world</b></p>]]></description></item>' +
+      '</channel></rss>')),
+    expect: ['Hello', 'world'],
+    notExpect: ['<p>', '<b>', 'CDATA', ']]>'],
+  },
+  {
+    name: 'RSS parser strips CDATA in titles too',
+    fn: () => JSON.stringify(parseRss(
+      '<rss><channel>' +
+      '<item><title><![CDATA[CDATA &amp; Title]]></title><link>https://d.example/1</link><description>x</description></item>' +
+      '</channel></rss>')),
+    expect: ['CDATA & Title'],
+    notExpect: ['CDATA[', ']]>'],
+  },
+  {
+    name: 'RSS parser returns empty for junk xml',
+    fn: () => String(parseRss('<html><body>no feed</body></html>').length),
+    expect: ['0'],
+  },
+  {
+    name: 'news feeds defined for all live categories',
+    fn: () => JSON.stringify(Object.keys(NEWS_FEEDS).sort()),
+    expect: ['top', 'world', 'tech', 'business', 'science', 'sports'],
   },
 ];
 

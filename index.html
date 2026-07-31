@@ -42,6 +42,10 @@
     <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
     <symbol id="i-market" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></symbol>
     <symbol id="i-weather" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/></symbol>
+    <symbol id="i-briefing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-4"/><path d="M9.5 15.5h5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
   </svg>
 
   <!-- ═══════════ OFFLINE BANNER ═══════════ -->
@@ -71,6 +75,13 @@
       </button>
     </div>
   </header>
+
+  <!-- ═══════════ LIVE TICKER ═══════════ -->
+  <div class="live-ticker" id="liveTicker" hidden>
+    <span class="ticker-label"><span class="live-dot"></span><span class="ticker-live-text">LIVE</span></span>
+    <div class="ticker-track" id="tickerTrack" aria-label="Live markets and weather"></div>
+    <span class="ticker-updated" id="tickerUpdated"></span>
+  </div>
 
   <main id="app">
 
@@ -119,6 +130,43 @@
           <div class="stat"><b class="stat-num" id="statReports">0</b><span class="stat-label">saved reports</span></div>
           <div class="stat"><b class="stat-num">0</b><span class="stat-label">API keys needed</span></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ LIVE NEWS ═══════════ -->
+    <section class="live-news" id="liveNews" aria-label="Live news">
+      <div class="live-head">
+        <div class="live-title-wrap">
+          <span class="live-badge"><span class="live-dot"></span><svg class="ic" aria-hidden="true"><use href="#i-live"/></svg><span id="liveBadgeText">Live</span></span>
+          <h2 class="live-title" id="liveTitle">Top stories</h2>
+        </div>
+        <div class="live-actions">
+          <span class="live-updated" id="liveUpdated"></span>
+          <button class="icon-btn" id="liveRefreshBtn" title="Refresh news" aria-label="Refresh news">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>
+          </button>
+          <button class="btn btn-primary btn-brief" id="briefingBtn">
+            <svg class="ic" aria-hidden="true"><use href="#i-briefing"/></svg>
+            <span>Daily Briefing</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="live-cats" id="liveCats" role="tablist">
+        <button class="live-cat active" data-cat="top" role="tab">Top</button>
+        <button class="live-cat" data-cat="world" role="tab">World</button>
+        <button class="live-cat" data-cat="tech" role="tab">Tech</button>
+        <button class="live-cat" data-cat="business" role="tab">Business</button>
+        <button class="live-cat" data-cat="science" role="tab">Science</button>
+        <button class="live-cat" data-cat="sports" role="tab">Sports</button>
+      </div>
+
+      <div class="live-grid" id="liveGrid"></div>
+
+      <div class="live-empty" id="liveEmpty" hidden>
+        <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-news"/></svg></div>
+        <h3>Live feed unavailable</h3>
+        <p id="liveEmptyMsg">Couldn't reach the news sources. Check your connection and try again.</p>
       </div>
     </section>
 

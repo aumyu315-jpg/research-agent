@@ -277,6 +277,14 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, results: items, engine }) };
     }
 
+  // live news feed (keyless RSS aggregation, 5-min server cache)
+  if (event.httpMethod === 'GET' && url.pathname.endsWith('/news')) {
+    const cat = (url.searchParams.get('cat') || 'top').toLowerCase();
+    if (!NEWS_FEEDS[cat]) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'unknown category' }) };
+    const items = await newsSearch(cat);
+    return { statusCode: 200, headers, body: JSON.stringify({ ok: true, category: cat, results: items, engine: 'rss' }) };
+  }
+
     // content extraction
     if (event.httpMethod === 'POST' && url.pathname.endsWith('/content')) {
       const body = JSON.parse(event.body || '{}');
@@ -299,7 +307,129 @@ exports.handler = async (event) => {
   }
 };
 
+// ── keyless live news: category RSS feeds (professional outlets) ──
+const NEWS_CACHE_TTL = 5 * 60 * 1000; // 5 min
+const NEWS_MAX = 24;
+
+const NEWS_FEEDS = {
+  top: [
+    'https://feeds.bbci.co.uk/news/rss.xml',
+    'https://www.theguardian.com/world/rss',
+    'https://techcrunch.com/feed/',
+    'https://www.theverge.com/rss/index.xml',
+  ],
+  world: [
+    'https://feeds.bbci.co.uk/news/world/rss.xml',
+    'https://www.theguardian.com/world/rss',
+  ],
+  tech: [
+    'https://feeds.bbci.co.uk/news/technology/rss.xml',
+    'https://techcrunch.com/feed/',
+    'https://www.theverge.com/rss/index.xml',
+  ],
+  business: [
+    'https://feeds.bbci.co.uk/news/business/rss.xml',
+    'https://www.theguardian.com/business/rss',
+  ],
+  science: [
+    'https://feeds.bbci.co.uk/news/science_and_environment/rss.xml',
+  ],
+  sports: [
+    'https://feeds.bbci.co.uk/sport/rss.xml',
+  ],
+};
+
+// Outlet label shown on each card (matched by index to the feeds above)
+const NEWS_OUTLETS = {
+  top: ['BBC News', 'The Guardian', 'TechCrunch', 'The Verge'],
+  world: ['BBC World', 'The Guardian'],
+  tech: ['BBC Tech', 'TechCrunch', 'The Verge'],
+  business: ['BBC Business', 'The Guardian'],
+  science: ['BBC Science'],
+  sports: ['BBC Sport'],
+};
+
+const newsCache = new Map(); // cat -> { items, ts }
+
+// Minimal RSS/Atom parser (regex-based, zero deps — handles BBC/Guardian/TechCrunch/Verge)
+function parseRss(xml) {
+  const items = [];
+  const body = String(xml || '');
+  // RSS 2.0 <item> or Atom <entry> blocks
+  const blockRe = /<(item|entry)[^>]*>([\s\S]*?)<\/\1>/g;
+  let m;
+  while ((m = blockRe.exec(body)) && items.length < NEWS_MAX) {
+    const blk = m[2];
+    const grab = re => {
+      const x = blk.match(re);
+      return x ? x[1] : '';
+    };
+    const stripCdata = s => String(s || '').replace(/<!\[CDATA\[|\]\]>/g, '');
+    const title = stripTags(decodeEntities(stripCdata(grab(/<title[^>]*>([\s\S]*?)<\/title>/i)))).trim();
+    let link = grab(/<link>([\s\S]*?)<\/link>/i).trim();
+    if (!link) link = decodeEntities(stripCdata(grab(/<link[^>]*href=["']([^"']+)["']/i))).trim(); // Atom style
+    const desc = stripTags(decodeEntities(stripCdata(
+      grab(/<description[^>]*>([\s\S]*?)<\/description>/i) || grab(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
+    ))).trim();
+    const pubRaw = grab(/<pubDate>([\s\S]*?)<\/pubDate>/i).trim() || grab(/<updated>([\s\S]*?)<\/updated>/i).trim();
+    if (!title || !link) continue;
+    items.push({
+      title: title.slice(0, 200),
+      url: link,
+      snippet: desc.slice(0, 320),
+      publishedAt: pubRaw ? new Date(pubRaw).getTime() : null,
+    });
+  }
+  return items;
+}
+
+async function fetchFeed(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AuroraResearch/1.0; news feed reader)', 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const xml = await res.text();
+    if (!/<(item|entry)[ >]/i.test(xml)) throw new Error('Not an RSS feed');
+    return parseRss(xml);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function newsSearch(cat) {
+  const cached = newsCache.get(cat);
+  if (cached && Date.now() - cached.ts < NEWS_CACHE_TTL) return cached.items;
+
+  const feeds = NEWS_FEEDS[cat] || NEWS_FEEDS.top;
+  const outlets = NEWS_OUTLETS[cat] || NEWS_OUTLETS.top;
+  const settled = await Promise.allSettled(feeds.map((url, i) =>
+    fetchFeed(url).then(items => items.map(it => ({ ...it, meta: outlets[i] || 'News' })))));
+
+  const seen = new Set();
+  const merged = [];
+  for (const r of settled) {
+    if (r.status !== 'fulfilled') continue;
+    for (const it of r.value) {
+      const key = it.title.toLowerCase().slice(0, 80);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(it);
+    }
+  }
+  // newest first, with unknown dates last
+  merged.sort((a, b) => (b.publishedAt || -1) - (a.publishedAt || -1));
+  const items = merged.slice(0, NEWS_MAX);
+  newsCache.set(cat, { items, ts: Date.now() });
+  return items;
+}
+
 // exported for unit tests
 exports._stripTags = stripTags;
 exports._decodeEntities = decodeEntities;
 exports._parseDdgHtml = parseDdgHtml;
+exports._parseRss = parseRss;
+exports._NEWS_FEEDS = NEWS_FEEDS;

@@ -7,6 +7,7 @@
    ───────────────────────────────────────────── */
 const Search = (() => {
   const TIMEOUT = 18000;
+  const NEWS_LIMIT = 20;
 
   async function fetchJSON(url, opts = {}) {
     const ctrl = new AbortController();
@@ -305,6 +306,147 @@ const Search = (() => {
     return map[code] || 'Weather conditions';
   }
 
+  // ── LIVE NEWS FEED (serverless RSS preferred, keyless browser fallback) ──
+  const LIVE_CATS = {
+    top:      { label: 'Top stories', gnews: null,        wikinews: null,   hn: true },
+    world:    { label: 'World',       gnews: 'world',     wikinews: 'World', hn: false },
+    tech:     { label: 'Tech',        gnews: 'technology',wikinews: 'Science and technology', hn: true },
+    business: { label: 'Business',    gnews: 'business',  wikinews: 'Business and economics', hn: false },
+    science:  { label: 'Science',     gnews: 'science',   wikinews: 'Science and technology', hn: false },
+    sports:   { label: 'Sports',      gnews: 'sports',    wikinews: 'Sports', hn: false },
+  };
+
+  // Hacker News front page — works from the browser with no key (fallback feed)
+  async function hnFrontPage(limit) {
+    const data = await fetchJSON(
+      `https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=${limit}`);
+    return (data.hits || []).map(h => ({
+      id: 'hn-live-' + h.objectID,
+      source: 'news',
+      title: h.title || h.story_title || '(untitled)',
+      url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+      snippet: `${h.points || 0} points · ${h.num_comments || 0} comments on Hacker News`,
+      publishedAt: h.created_at ? new Date(h.created_at).getTime() : null,
+      meta: 'Hacker News',
+    }));
+  }
+
+  // Wikinews category listing — keyless (fallback feed)
+  async function wikinewsCat(cat, limit) {
+    const data = await fetchJSON(
+      `https://en.wikinews.org/w/api.php?action=query&list=categorymembers&cmtitle=Category:${encodeURIComponent(cat)}&cmlimit=${limit}&format=json&origin=*&utf8=1`);
+    return ((data.query && data.query.categorymembers) || []).map(p => ({
+      id: 'wn-live-' + p.pageid,
+      source: 'news',
+      title: p.title,
+      url: `https://en.wikinews.org/wiki/${encodeURIComponent(p.title.replace(/ /g, '_'))}`,
+      snippet: 'Latest coverage from Wikinews',
+      publishedAt: null,
+      meta: 'Wikinews',
+    }));
+  }
+
+  // GNews top headlines — only when a free key is configured
+  async function gnewsTop(cat, limit, key) {
+    if (!key) return [];
+    const catParam = cat ? `&category=${encodeURIComponent(cat)}` : '';
+    const data = await fetchJSON(
+      `https://gnews.io/api/v4/top-headlines?token=${encodeURIComponent(key)}&lang=en&max=${limit}${catParam}`);
+    return (data.articles || []).map(a => ({
+      id: 'news-live-' + (a.url || Math.random().toString(36).slice(2)),
+      source: 'news',
+      title: a.title || 'News',
+      url: a.url,
+      snippet: a.description || '',
+      publishedAt: a.publishedAt ? new Date(a.publishedAt).getTime() : null,
+      meta: (a.source && a.source.name) || 'GNews',
+    }));
+  }
+
+  // Serverless RSS aggregation (BBC/Guardian/TechCrunch/Verge) — primary live feed
+  async function backendNews(cat) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch(`/api/news?cat=${encodeURIComponent(cat)}`, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.ok || !Array.isArray(data.results) || !data.results.length) return null;
+      return data.results;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Top-level live feed: serverless RSS -> HN front page -> Wikinews/GNews
+  async function liveNews(cat, settings) {
+    const key = (cat && LIVE_CATS[cat]) ? cat : 'top';
+    const meta = LIVE_CATS[key];
+
+    const backend = await backendNews(key);
+    if (backend && backend.length) return { results: backend, engine: 'rss', sources: ['rss'] };
+
+    const per = Math.min(Math.max(Number((settings || {}).perSource) || 8, 3), 15);
+    const jobs = [];
+    if (meta.hn) jobs.push(hnFrontPage(per).catch(() => []));
+    if (meta.wikinews) jobs.push(wikinewsCat(meta.wikinews, Math.ceil(per / 2)).catch(() => []));
+    if (meta.gnews) jobs.push(gnewsTop(meta.gnews, per, (settings || {}).newsKey).catch(() => []));
+
+    const groups = await Promise.all(jobs);
+    const seen = new Set();
+    const merged = [];
+    for (const items of groups) {
+      for (const it of items) {
+        const dupKey = (it.title || '').toLowerCase().slice(0, 70);
+        if (seen.has(dupKey)) continue;
+        seen.add(dupKey);
+        merged.push(it);
+      }
+    }
+    merged.sort((a, b) => (b.publishedAt || -1) - (a.publishedAt || -1));
+    return { results: merged.slice(0, NEWS_LIMIT), engine: 'fallback', sources: ['hackernews', 'news'] };
+  }
+
+  // ── LIVE TICKER ──
+  // Markets: CoinGecko top coins with 24h change (keyless, CORS-verified)
+  async function liveMarkets(limit = 6) {
+    const data = await fetchJSON(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${limit}&page=1&sparkline=false&price_change_percentage=24h`);
+    return (data || []).map(c => ({
+      symbol: (c.symbol || '').toUpperCase(),
+      name: c.name,
+      price: c.current_price,
+      change24h: c.price_change_percentage_24h,
+      url: `https://www.coingecko.com/en/coins/${c.id}`,
+    }));
+  }
+
+  // Weather: a few major cities via Open-Meteo (keyless, CORS-verified)
+  const TICKER_CITIES = [
+    { name: 'London', lat: 51.5085, lon: -0.1257 },
+    { name: 'New York', lat: 40.7143, lon: -74.006 },
+    { name: 'Tokyo', lat: 35.6895, lon: 139.6917 },
+    { name: 'Sydney', lat: -33.8679, lon: 151.2073 },
+    { name: 'Mumbai', lat: 19.0728, lon: 72.8826 },
+  ];
+  async function liveWeather() {
+    const jobs = TICKER_CITIES.map(async c => {
+      const w = await fetchJSON(
+        `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&current=temperature_2m,weather_code&timezone=auto`);
+      const cur = w.current || {};
+      return {
+        city: c.name,
+        temp: cur.temperature_2m,
+        label: codeToLabel(cur.weather_code),
+        url: `https://open-meteo.com/en/weather/${c.lat},${c.lon}`,
+      };
+    });
+    const settled = await Promise.allSettled(jobs);
+    return settled.filter(r => r.status === 'fulfilled').map(r => r.value);
+  }
+
   // ── Query-type detection (heuristic scoring) ──
   const TYPE_HINTS = {
     weather: [/weather|forecast|temperature|rain|snow|humidity|storm|wind|°c|°f|conditions in|celsius|fahrenheit/i],
@@ -408,7 +550,7 @@ const Search = (() => {
     return { query, results, errors, sources: jobs.map(([n]) => n), detected };
   }
 
-  return { run, detectType, routeSources, TYPE_META, sourceMeta: {
+  return { run, detectType, routeSources, TYPE_META, liveNews, liveMarkets, liveWeather, LIVE_CATS, sourceMeta: {
     wikipedia:   { label: 'Wikipedia',   color: 'src-wikipedia',   icon: 'i-book' },
     hackernews:  { label: 'Hacker News', color: 'src-hackernews',  icon: 'i-hn' },
     web:         { label: 'Web',         color: 'src-web',         icon: 'i-globe' },

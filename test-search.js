@@ -3,7 +3,7 @@ const fs = require('fs');
 const Search = new Function(fs.readFileSync('js/search.js', 'utf8') + '\nreturn Search;')();
 
 let pass = 0;
-const TOTAL = 20;
+const TOTAL = 27;
 const check = (name, cond) => { pass += cond ? 1 : 0; console.log(cond ? 'PASS:' : 'FAIL:', name); };
 
 // 1. Type detection
@@ -41,6 +41,16 @@ check('no type runs all enabled sources', noType.sources.length === Object.keys(
 
 const gen = Search.routeSources(null, { wikipedia: true, web: true, code: false });
 check('no type respects disabled sources', gen.sources.includes('wikipedia') && !gen.sources.includes('code'));
+
+// 3. Live news categories
+const cats = Search.LIVE_CATS;
+check('live cats has 6 categories', cats && Object.keys(cats).length === 6);
+check('live top uses HN front page', cats.top.hn === true && cats.top.gnews === null);
+check('live world maps to GNews+Wikinews', cats.world.gnews === 'world' && cats.world.wikinews === 'World');
+check('live tech uses HN + Wikinews science', cats.tech.hn === true && cats.tech.wikinews === 'Science and technology');
+check('live business maps to business', cats.business.gnews === 'business');
+check('live science maps to science', cats.science.gnews === 'science');
+check('live sports maps to sports', cats.sports.gnews === 'sports');
 
 console.log(`\n${pass}/${TOTAL} tests passed`);
 process.exit(pass === TOTAL ? 0 : 1);

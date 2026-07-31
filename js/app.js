@@ -44,6 +44,10 @@
     reportSavedId: null,
     isGenerating: false,
     online: navigator.onLine !== false,
+    liveCat: 'top',
+    liveStories: [],
+    liveUpdated: null,
+    liveLoading: false,
   };
 
   const $ = (s, r) => (r || document).querySelector(s);
@@ -60,6 +64,7 @@
     window.addEventListener('offline', updateConnection);
     registerSW();
     refreshLibraryCount();
+    initLive();
     if (location.hash.startsWith('#report=')) openReportFromHash(location.hash.slice(8));
   }
 
@@ -201,6 +206,16 @@
         doSearch(chip.dataset.q);
       }
     });
+
+    // live news
+    $('#liveRefreshBtn').addEventListener('click', () => loadLiveFeed(state.liveCat));
+    $('#briefingBtn').addEventListener('click', startBriefing);
+    $('#liveCats').addEventListener('click', e => {
+      const tab = e.target.closest('.live-cat');
+      if (!tab) return;
+      $$('.live-cat').forEach(t => t.classList.toggle('active', t === tab));
+      loadLiveFeed(tab.dataset.cat);
+    });
   }
 
   // ═══════════ VIEW ROUTING ═══════════
@@ -212,6 +227,130 @@
       refreshLibraryCount();
       renderLibrary();
     }
+  }
+
+  // ═══════════ LIVE NEWS ═══════════
+  function initLive() {
+    loadLiveFeed('top');
+    loadTicker();
+    // auto-refresh: every 5 min, only while visible, online, and on the home view
+    setInterval(() => {
+      if (!state.online || document.visibilityState !== 'visible') return;
+      const active = $$('[data-view-panel]').find(v => !v.hidden);
+      if (active && active.id === 'view-home') {
+        loadLiveFeed(state.liveCat, true);
+        loadTicker(true);
+      }
+    }, 5 * 60 * 1000);
+  }
+
+  async function loadLiveFeed(cat, silent) {
+    if (state.liveLoading) return;
+    state.liveLoading = true;
+    state.liveCat = cat;
+    const grid = $('#liveGrid');
+    const catMeta = Search.LIVE_CATS[cat];
+    if (catMeta) $('#liveTitle').textContent = catMeta.label;
+    if (!silent) grid.innerHTML = liveSkeleton(6);
+    $('#liveEmpty').hidden = true;
+    $('#liveBadgeText').textContent = 'Updating';
+    try {
+      const res = await Search.liveNews(cat, state.settings);
+      state.liveStories = res.results;
+      state.liveUpdated = Date.now();
+      renderLiveFeed();
+    } catch {
+      state.liveStories = [];
+      $('#liveEmpty').hidden = false;
+      $('#liveEmptyMsg').textContent = "Couldn't reach the news sources. Check your connection and try again.";
+    } finally {
+      state.liveLoading = false;
+      $('#liveBadgeText').textContent = 'Live';
+    }
+  }
+
+  function liveSkeleton(n = 6) {
+    return Array.from({ length: n }, () => `
+      <article class="live-card is-skeleton">
+        <div class="lc-top">
+          <div class="sk" style="width:76px;height:16px"></div>
+          <div class="sk" style="width:48px;height:14px;margin-left:auto"></div>
+        </div>
+        <div class="sk" style="width:94%;height:16px"></div>
+        <div class="sk" style="width:62%;height:16px"></div>
+        <div class="lc-foot"><div class="sk" style="width:38%;height:12px"></div></div>
+      </article>`).join('');
+  }
+
+  function renderLiveFeed() {
+    const grid = $('#liveGrid');
+    const stories = state.liveStories;
+    $('#liveUpdated').textContent = stories.length
+      ? `Updated ${UI.timeAgo(state.liveUpdated)} · ${stories.length} stories`
+      : '';
+    $('#liveEmpty').hidden = stories.length > 0;
+    grid.innerHTML = stories.map(r => `
+      <article class="live-card">
+        <div class="lc-top">
+          <span class="lc-outlet"><svg class="ic" aria-hidden="true"><use href="#i-news"/></svg>${UI.esc(r.meta || 'News')}</span>
+          <span class="lc-time"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>${UI.timeAgo(r.publishedAt) || 'recent'}</span>
+        </div>
+        <h3 class="lc-title"><a href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">${UI.esc(r.title)}</a></h3>
+        <div class="lc-foot">
+          <span class="lc-domain">${UI.esc(UI.domain(r.url))}</span>
+          <a class="lc-open" href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">Read<svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg></a>
+        </div>
+      </article>`).join('');
+  }
+
+  // Daily Briefing: run the full AI report pipeline over the current live stories
+  async function startBriefing() {
+    if (!state.liveStories.length) { UI.toast('No live stories yet — refresh or check connection.', 'info'); return; }
+    state.lastQuery = `Daily briefing — ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`;
+    state.results = state.liveStories.map(r => ({ ...r, source: 'news' }));
+    state.resultsBySource = groupBySource(state.results);
+    state.detected = 'news';
+    $('#searchInput').value = state.lastQuery;
+    generateReport(`Daily Briefing — ${new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`);
+  }
+
+  // ═══════════ LIVE TICKER ═══════════
+  async function loadTicker() {
+    try {
+      const [markets, weather] = await Promise.all([
+        Search.liveMarkets(6).catch(() => []),
+        Search.liveWeather().catch(() => []),
+      ]);
+      renderTicker(markets, weather);
+    } catch { /* ticker is optional */ }
+  }
+
+  function renderTicker(markets, weather) {
+    const track = $('#tickerTrack');
+    const ticker = $('#liveTicker');
+    if (!track || !ticker) return;
+    const parts = [];
+    for (const m of markets) {
+      const up = (m.change24h || 0) >= 0;
+      parts.push(`<span class="tk-item"><a href="${UI.esc(m.url)}" target="_blank" rel="noopener noreferrer"><span class="tk-sym">${UI.esc(m.symbol)}</span><span class="tk-price">$${fmtPrice(m.price)}</span><span class="tk-chg ${up ? 'up' : 'down'}"><svg class="ic" aria-hidden="true"><use href="#${up ? 'i-up' : 'i-down'}"/></svg>${Math.abs(m.change24h || 0).toFixed(2)}%</span></a></span>`);
+    }
+    if (weather.length) parts.push('<span class="tk-div"></span>');
+    for (const w of weather) {
+      parts.push(`<span class="tk-item"><a href="${UI.esc(w.url)}" target="_blank" rel="noopener noreferrer"><span class="tk-city">${UI.esc(w.city)}</span><span>${UI.esc(w.label)}</span><span class="tk-temp">${w.temp != null ? w.temp + '°C' : '—'}</span></a></span>`);
+    }
+    if (!parts.length) { ticker.hidden = true; return; }
+    const html = `<div class="ticker-inner">${parts.join('')}${parts.join('')}</div>`;
+    $('#tickerUpdated').textContent = UI.timeAgo(Date.now());
+    // skip rebuild when nothing changed so the marquee animation never jumps
+    if (track.innerHTML === html) { ticker.hidden = false; return; }
+    track.innerHTML = html;
+    ticker.hidden = false;
+  }
+
+  function fmtPrice(p) {
+    if (p == null) return '—';
+    if (p >= 1000) return p.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return p.toLocaleString(undefined, { maximumFractionDigits: p < 1 ? 6 : 2 });
   }
 
   // ═══════════ SEARCH ═══════════
@@ -354,14 +493,15 @@
   }
 
   // ═══════════ REPORT GENERATION ═══════════
-  async function generateReport() {
+  async function generateReport(titleOverride) {
     if (state.isGenerating) return;
     if (!state.results.length) { UI.toast('Search something first', 'info'); return; }
 
+    const customTitle = (typeof titleOverride === 'string' && titleOverride.trim()) ? titleOverride.trim() : null;
     state.isGenerating = true;
     state.reportSavedId = null;
     state.reportMarkdown = '';
-    state.reportTitle = `Research report: ${state.lastQuery}`;
+    state.reportTitle = customTitle || `Research report: ${state.lastQuery}`;
     $('#reportTitle').textContent = state.reportTitle;
     $('#reportMeta').innerHTML = `
       <span><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>${UI.esc(providerLabel(state.settings.provider))}</span>
