@@ -49,7 +49,19 @@
     liveCatLoaded: null,   // category the currently displayed stories belong to
     liveUpdated: null,
     liveLoading: false,
+    newsCountry: null,     // selected country code (null = global)
+    newsQuery: null,       // active news topic search (null = live feed)
+    chatMessages: [],      // [{ role, content }]
+    chatBusy: false,
   };
+
+  const CHAT_SUGGESTS = [
+    'Summarize today\'s top stories',
+    'Explain the biggest headline in simple terms',
+    'What are the risks of AI regulation?',
+    'Give me a 5-point briefing on climate change',
+  ];
+  const CHAT_STORE_KEY = 'aurora-chat';
 
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => [...(r || document).querySelectorAll(s)];
@@ -59,6 +71,7 @@
     loadSettings();
     applySettingsToUI();
     renderTrending();
+    populateCountries();
     bindEvents();
     updateConnection();
     window.addEventListener('online', updateConnection);
@@ -67,6 +80,13 @@
     refreshLibraryCount();
     initLive();
     if (location.hash.startsWith('#report=')) openReportFromHash(location.hash.slice(8));
+  }
+
+  function populateCountries() {
+    const sel = $('#countrySelect');
+    if (!sel || !Search.COUNTRIES) return;
+    sel.innerHTML = `<option value="GLOBAL">🌐 Global (all countries)</option>` +
+      Search.COUNTRIES.map(c => `<option value="${c.code}">${c.flag} ${UI.esc(c.name)}</option>`).join('');
   }
 
   function loadSettings() {
@@ -113,7 +133,7 @@
   // ═══════════ EVENTS ═══════════
   function bindEvents() {
     // nav
-    $('#brandBtn').addEventListener('click', () => showView('home'));
+    $('#brandBtn').addEventListener('click', () => showView('news'));
     $$('.topnav-link').forEach(a => a.addEventListener('click', e => {
       e.preventDefault();
       showView(a.dataset.view);
@@ -209,14 +229,126 @@
     });
 
     // live news
-    $('#liveRefreshBtn').addEventListener('click', () => loadLiveFeed(state.liveCat));
-    $('#briefingBtn').addEventListener('click', startBriefing);
+    $('#liveRefreshBtn').addEventListener('click', () => { state.newsQuery = null; clearNewsSearch(); loadLiveFeed(state.liveCat); });
+    $('#summaryBtn').addEventListener('click', summarizeFeed);
     $('#liveCats').addEventListener('click', e => {
       const tab = e.target.closest('.live-cat');
       if (!tab) return;
       $$('.live-cat').forEach(t => t.classList.toggle('active', t === tab));
+      state.newsQuery = null;
+      clearNewsSearch();
       loadLiveFeed(tab.dataset.cat);
     });
+
+    // country selector + news topic search
+    $('#countrySelect').addEventListener('change', e => {
+      const code = e.target.value || null;
+      state.newsCountry = code === 'GLOBAL' ? null : code;
+      state.newsQuery = null;
+      clearNewsSearch();
+      loadLiveFeed(state.liveCat);
+    });
+    $('#newsSearchForm').addEventListener('submit', e => {
+      e.preventDefault();
+      doNewsSearch($('#newsSearchInput').value);
+    });
+    $('#newsClearBtn').addEventListener('click', () => {
+      state.newsQuery = null;
+      $('#newsSearchInput').value = '';
+      clearNewsSearch();
+      loadLiveFeed(state.liveCat);
+    });
+
+    // chat
+    $('#chatForm').addEventListener('submit', e => { e.preventDefault(); sendChat(); });
+    $('#chatClearBtn').addEventListener('click', clearChat);
+    $('#chatSuggests').addEventListener('click', e => {
+      const chip = e.target.closest('.chat-suggest-chip');
+      if (chip) {
+        $('#chatInput').value = chip.dataset.q;
+        sendChat();
+      }
+    });
+  }
+
+  // ═══════════ CHAT ═══════════
+  function restoreChat() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CHAT_STORE_KEY) || '[]');
+      if (Array.isArray(saved)) state.chatMessages = saved.slice(-20);
+    } catch { /* ignore */ }
+    renderChatSuggestions();
+    renderChat();
+  }
+
+  function persistChat() {
+    try { localStorage.setItem(CHAT_STORE_KEY, JSON.stringify(state.chatMessages.slice(-20))); } catch { /* ignore */ }
+  }
+
+  function renderChatSuggestions() {
+    $('#chatSuggests').innerHTML = CHAT_SUGGESTS.map(q =>
+      `<button class="chat-suggest-chip" data-q="${UI.esc(q)}">${UI.esc(q)}</button>`).join('');
+  }
+
+  function renderChat() {
+    const box = $('#chatMessages');
+    if (!state.chatMessages.length) {
+      box.innerHTML = `<div class="chat-msg ai typing">Hi! I'm Aurora — ask me anything about the news, a topic you're researching, or anything else. 👋</div>`;
+      return;
+    }
+    box.innerHTML = state.chatMessages.map(m => m.role === 'user'
+      ? `<div class="chat-msg user"><p>${UI.esc(m.content)}</p></div>`
+      : `<div class="chat-msg ai"><div class="markdown-body">${Markdown.render(m.content)}</div></div>`
+    ).join('');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function sendChat() {
+    const input = $('#chatInput');
+    const text = (input.value || '').trim();
+    if (!text || state.chatBusy) return;
+    state.chatBusy = true;
+    input.value = '';
+    state.chatMessages.push({ role: 'user', content: text });
+    persistChat();
+    renderChat();
+
+    const box = $('#chatMessages');
+    const aiMsg = document.createElement('div');
+    aiMsg.className = 'chat-msg ai';
+    aiMsg.innerHTML = '<div class="markdown-body"><span class="caret"></span></div>';
+    box.appendChild(aiMsg);
+    box.scrollTop = box.scrollHeight;
+
+    let rendered = '';
+    const paint = UI.debounce(() => {
+      aiMsg.querySelector('.markdown-body').innerHTML = Markdown.render(rendered) + '<span class="caret"></span>';
+      box.scrollTop = box.scrollHeight;
+    }, 120);
+
+    const sendBtn = $('#chatForm .chat-send');
+    sendBtn.disabled = true;
+    try {
+      const { markdown, provider } = await AI.chat(state.chatMessages, state.settings, {
+        onChunk: chunk => { rendered += chunk; paint(); },
+      });
+      state.chatMessages.push({ role: 'assistant', content: markdown });
+      persistChat();
+      aiMsg.querySelector('.markdown-body').innerHTML = Markdown.render(markdown);
+      if (provider === 'local') UI.toast('AI providers unreachable — offline summary mode.', 'info', 4200);
+    } catch (e) {
+      aiMsg.innerHTML = `<div class="chat-msg-err">⚠ ${UI.esc(e.message || 'Could not reach the AI.')}</div>`;
+    } finally {
+      state.chatBusy = false;
+      sendBtn.disabled = false;
+      box.scrollTop = box.scrollHeight;
+    }
+  }
+
+  function clearChat() {
+    state.chatMessages = [];
+    persistChat();
+    renderChat();
   }
 
   // ═══════════ VIEW ROUTING ═══════════
@@ -232,17 +364,65 @@
 
   // ═══════════ LIVE NEWS ═══════════
   function initLive() {
+    restoreChat();
     loadLiveFeed('top');
     loadTicker();
-    // auto-refresh: every 5 min, only while visible, online, and on the home view
+    // auto-refresh: every 5 min, only while visible, online, and on the news view
     setInterval(() => {
       if (!state.online || document.visibilityState !== 'visible') return;
       const active = $$('[data-view-panel]').find(v => !v.hidden);
-      if (active && active.id === 'view-home') {
+      if (active && active.id === 'view-news' && !state.newsQuery) {
         loadLiveFeed(state.liveCat, true);
         loadTicker();
       }
     }, 5 * 60 * 1000);
+  }
+
+  function clearNewsSearch() {
+    $('#newsSearchInput').value = '';
+    $('#newsClearBtn').hidden = true;
+    updateNewsModeChip();
+  }
+
+  function updateNewsModeChip() {
+    const chip = $('#newsModeChip');
+    if (!chip) return;
+    const country = state.newsCountry ? Search.countryName(state.newsCountry) : 'Global';
+    const catLabel = Search.LIVE_CATS[state.liveCat] ? Search.LIVE_CATS[state.liveCat].label : 'Top stories';
+    chip.innerHTML = `<svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg> ${UI.esc(country)} · ${UI.esc(state.newsQuery || catLabel)}`;
+  }
+
+  // News topic search: latest news for a query (country-scoped when selected)
+  async function doNewsSearch(query) {
+    query = (query || '').trim();
+    if (!query) return;
+    if (state.liveLoading) return;
+    state.liveLoading = true;
+    state.newsQuery = query;
+    $('#newsClearBtn').hidden = false;
+    $('#newsSearchInput').value = query;
+    $('#liveBadgeText').textContent = 'Searching';
+    $('#liveTitle').textContent = `News · ${query}`;
+    $('#liveEmpty').hidden = true;
+    $('#liveGrid').innerHTML = liveSkeleton(6);
+    try {
+      const res = await Search.searchNews(query, state.settings, state.newsCountry);
+      state.liveStories = res.results;
+      state.liveCatLoaded = state.liveCat;
+      state.liveUpdated = Date.now();
+      updateNewsModeChip();
+      renderLiveFeed();
+      if (!res.results.length) {
+        $('#liveEmpty').hidden = false;
+        $('#liveEmptyMsg').textContent = `No recent news for "${query}". Try different keywords.`;
+      }
+    } catch {
+      $('#liveEmpty').hidden = false;
+      $('#liveEmptyMsg').textContent = "Couldn't fetch news for that topic. Check your connection.";
+    } finally {
+      state.liveLoading = false;
+      $('#liveBadgeText').textContent = 'Live';
+    }
   }
 
   async function loadLiveFeed(cat, silent) {
@@ -255,8 +435,9 @@
     if (!silent) grid.innerHTML = liveSkeleton(6);
     $('#liveEmpty').hidden = true;
     $('#liveBadgeText').textContent = 'Updating';
+    updateNewsModeChip();
     try {
-      const res = await Search.liveNews(cat, state.settings);
+      const res = await Search.liveNews(cat, state.settings, state.newsCountry);
       state.liveStories = res.results;
       state.liveCatLoaded = cat;
       state.liveUpdated = Date.now();
@@ -301,9 +482,11 @@
       <article class="live-card">
         <div class="lc-top">
           <span class="lc-outlet"><svg class="ic" aria-hidden="true"><use href="#i-news"/></svg>${UI.esc(r.meta || 'News')}</span>
-          <span class="lc-time"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>${UI.timeAgo(r.publishedAt) || 'recent'}</span>
+          ${r.flag ? `<span class="lc-loc"><span class="flag">${UI.esc(r.flag)}</span>${UI.esc(r.location || r.country || '')}</span>` : ''}
+          <span class="lc-time"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>${UI.timeAgo(r.publishedAt) || (r.publishedAt ? UI.fmtDate(r.publishedAt) : 'recent')}</span>
         </div>
         <h3 class="lc-title"><a href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">${UI.esc(r.title)}</a></h3>
+        ${r.snippet ? `<p class="lc-snippet">${UI.esc(r.snippet)}</p>` : ''}
         <div class="lc-foot">
           <span class="lc-domain">${UI.esc(UI.domain(r.url))}</span>
           <a class="lc-open" href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">Read<svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg></a>
@@ -311,16 +494,20 @@
       </article>`).join('');
   }
 
-  // Daily Briefing: run the full AI report pipeline over the current live stories
-  async function startBriefing() {
-    if (!state.liveStories.length) { UI.toast('No live stories yet — refresh or check connection.', 'info'); return; }
-    state.lastQuery = `Daily briefing — ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`;
+  // AI Summary: run the full AI report pipeline over the current news (country-aware)
+  async function summarizeFeed() {
+    if (!state.liveStories.length) { UI.toast('No stories yet — refresh or check connection.', 'info'); return; }
+    const country = state.newsCountry ? Search.countryName(state.newsCountry) : 'the world';
+    const scope = state.newsQuery ? `Latest news: ${state.newsQuery}` : `Daily news — ${country}`;
+    state.lastQuery = `${scope} — ${new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`;
     state.results = state.liveStories.map(r => ({ ...r, source: 'news' }));
     state.resultsBySource = groupBySource(state.results);
     state.detected = 'news';
     $('#searchInput').value = state.lastQuery;
-    generateReport(`Daily Briefing — ${new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`);
+    generateReport(`AI News Summary — ${scope}`);
   }
+
+
 
   // ═══════════ LIVE TICKER ═══════════
   async function loadTicker() {
@@ -655,8 +842,13 @@
     UI.toast(ok ? 'Report copied to clipboard' : 'Copy failed', ok ? 'ok' : 'err');
   }
 
-  function downloadReport() {
+  async function downloadReport() {
     if (!state.reportMarkdown) return;
+    const ok = await UI.confirm(
+      'Download report?',
+      'Save this report as a <b>.md</b> file to your device? You can also copy it or find it saved in your Library.',
+      'Download');
+    if (!ok) return;
     UI.download(`aurora-report-${state.lastQuery.replace(/[^\w-]+/g, '-').slice(0, 40)}.md`, state.reportMarkdown);
     UI.toast('Report downloaded as .md');
   }
@@ -754,6 +946,11 @@
     let reports;
     try { reports = await Storage.getAllReports(); } catch { reports = []; }
     if (!reports.length) { UI.toast('Nothing to export yet', 'info'); return; }
+    const ok = await UI.confirm(
+      'Export library?',
+      `Save all <b>${reports.length}</b> report${reports.length === 1 ? '' : 's'} as a single JSON file to your device?`,
+      'Export');
+    if (!ok) return;
     const blob = JSON.stringify(reports.map(r => ({ ...r, exportedAt: new Date().toISOString() })), null, 2);
     UI.download(`aurora-library-${new Date().toISOString().slice(0, 10)}.json`, blob, 'application/json');
     UI.toast(`Exported ${reports.length} report${reports.length === 1 ? '' : 's'}`);

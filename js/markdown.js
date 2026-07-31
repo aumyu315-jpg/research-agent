@@ -9,7 +9,7 @@ const Markdown = (() => {
     ));
   }
 
-  // inline: code, bold, italic, strikethrough, links
+  // inline: code, bold, italic, strikethrough, links, ==highlight==
   function inline(text) {
     return esc(text)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -18,6 +18,7 @@ const Markdown = (() => {
       .replace(/\*([^*]+)\*/g, '<em>$1</em>')
       .replace(/_([^_]+)_/g, '<em>$1</em>')
       .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+      .replace(/==([^=]+)==/g, '<mark>$1</mark>')
       .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
         '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   }

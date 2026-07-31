@@ -275,15 +275,25 @@ exports.handler = async (event) => {
       if (!q) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing q' }) };
       const { items, engine } = await webSearch(q);
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, results: items, engine }) };
-    }
+    }    // live news feed (keyless RSS aggregation, 5-min server cache)
+    //   ?cat=top|world|tech|business|science|sports  → global professional feeds
+    //   ?country=IN&cat=...                          → Google News for that country
+    //   ?q=QUERY&country=IN                          → Google News topic search (country-scoped)
+    if (event.httpMethod === 'GET' && url.pathname.endsWith('/news')) {
+      const cat = (url.searchParams.get('cat') || 'top').toLowerCase();
+      const country = (url.searchParams.get('country') || '').toUpperCase();
+      const q = (url.searchParams.get('q') || '').trim();
 
-  // live news feed (keyless RSS aggregation, 5-min server cache)
-  if (event.httpMethod === 'GET' && url.pathname.endsWith('/news')) {
-    const cat = (url.searchParams.get('cat') || 'top').toLowerCase();
-    if (!NEWS_FEEDS[cat]) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'unknown category' }) };
-    const items = await newsSearch(cat);
-    return { statusCode: 200, headers, body: JSON.stringify({ ok: true, category: cat, results: items, engine: 'rss' }) };
-  }
+      if (q || (country && NEWS_COUNTRIES[country])) {
+        const items = await countryNewsSearch(country || 'US', q || null, cat);
+        return { statusCode: 200, headers, body: JSON.stringify({
+          ok: true, category: cat, country: country || 'US', query: q || null, results: items, engine: 'gnews'
+        }) };
+      }
+      if (!NEWS_FEEDS[cat]) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'unknown category' }) };
+      const items = await newsSearch(cat);
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, category: cat, results: items, engine: 'rss' }) };
+    }
 
     // content extraction
     if (event.httpMethod === 'POST' && url.pathname.endsWith('/content')) {
@@ -349,9 +359,91 @@ const NEWS_OUTLETS = {
   sports: ['BBC Sport'],
 };
 
-const newsCache = new Map(); // cat -> { items, ts }
+const newsCache = new Map(); // key -> { items, ts }
 
-// Minimal RSS/Atom parser (regex-based, zero deps — handles BBC/Guardian/TechCrunch/Verge)
+// ── per-country news via Google News RSS (keyless, reliable, worldwide) ──
+const NEWS_COUNTRIES = {
+  US: { name: 'United States', flag: '🇺🇸', hl: 'en-US', gl: 'US', ceid: 'US:en' },
+  GB: { name: 'United Kingdom', flag: '🇬🇧', hl: 'en-GB', gl: 'GB', ceid: 'GB:en' },
+  IN: { name: 'India', flag: '🇮🇳', hl: 'en-IN', gl: 'IN', ceid: 'IN:en' },
+  CA: { name: 'Canada', flag: '🇨🇦', hl: 'en-CA', gl: 'CA', ceid: 'CA:en' },
+  AU: { name: 'Australia', flag: '🇦🇺', hl: 'en-AU', gl: 'AU', ceid: 'AU:en' },
+  DE: { name: 'Germany', flag: '🇩🇪', hl: 'de-DE', gl: 'DE', ceid: 'DE:de' },
+  FR: { name: 'France', flag: '🇫🇷', hl: 'fr-FR', gl: 'FR', ceid: 'FR:fr' },
+  IT: { name: 'Italy', flag: '🇮🇹', hl: 'it-IT', gl: 'IT', ceid: 'IT:it' },
+  ES: { name: 'Spain', flag: '🇪🇸', hl: 'es-ES', gl: 'ES', ceid: 'ES:es' },
+  NL: { name: 'Netherlands', flag: '🇳🇱', hl: 'nl-NL', gl: 'NL', ceid: 'NL:nl' },
+  JP: { name: 'Japan', flag: '🇯🇵', hl: 'ja-JP', gl: 'JP', ceid: 'JP:ja' },
+  KR: { name: 'South Korea', flag: '🇰🇷', hl: 'ko-KR', gl: 'KR', ceid: 'KR:ko' },
+  CN: { name: 'China', flag: '🇨🇳', hl: 'zh-CN', gl: 'CN', ceid: 'CN:zh-Hans' },
+  BR: { name: 'Brazil', flag: '🇧🇷', hl: 'pt-BR', gl: 'BR', ceid: 'BR:pt' },
+  MX: { name: 'Mexico', flag: '🇲🇽', hl: 'es-MX', gl: 'MX', ceid: 'MX:es' },
+  AR: { name: 'Argentina', flag: '🇦🇷', hl: 'es-AR', gl: 'AR', ceid: 'AR:es' },
+  ZA: { name: 'South Africa', flag: '🇿🇦', hl: 'en-ZA', gl: 'ZA', ceid: 'ZA:en' },
+  NG: { name: 'Nigeria', flag: '🇳🇬', hl: 'en-NG', gl: 'NG', ceid: 'NG:en' },
+  EG: { name: 'Egypt', flag: '🇪🇬', hl: 'ar-EG', gl: 'EG', ceid: 'EG:ar' },
+  SA: { name: 'Saudi Arabia', flag: '🇸🇦', hl: 'ar-SA', gl: 'SA', ceid: 'SA:ar' },
+  AE: { name: 'UAE', flag: '🇦🇪', hl: 'ar-AE', gl: 'AE', ceid: 'AE:ar' },
+  IL: { name: 'Israel', flag: '🇮🇱', hl: 'en-IL', gl: 'IL', ceid: 'IL:en' },
+  TR: { name: 'Turkey', flag: '🇹🇷', hl: 'tr-TR', gl: 'TR', ceid: 'TR:tr' },
+  RU: { name: 'Russia', flag: '🇷🇺', hl: 'ru-RU', gl: 'RU', ceid: 'RU:ru' },
+  SE: { name: 'Sweden', flag: '🇸🇪', hl: 'sv-SE', gl: 'SE', ceid: 'SE:sv' },
+  PL: { name: 'Poland', flag: '🇵🇱', hl: 'pl-PL', gl: 'PL', ceid: 'PL:pl' },
+  SG: { name: 'Singapore', flag: '🇸🇬', hl: 'en-SG', gl: 'SG', ceid: 'SG:en' },
+  PH: { name: 'Philippines', flag: '🇵🇭', hl: 'en-PH', gl: 'PH', ceid: 'PH:en' },
+  ID: { name: 'Indonesia', flag: '🇮🇩', hl: 'id-ID', gl: 'ID', ceid: 'ID:id' },
+  TH: { name: 'Thailand', flag: '🇹🇭', hl: 'th-TH', gl: 'TH', ceid: 'TH:th' },
+  PK: { name: 'Pakistan', flag: '🇵🇰', hl: 'en-PK', gl: 'PK', ceid: 'PK:en' },
+  BD: { name: 'Bangladesh', flag: '🇧🇩', hl: 'bn-BD', gl: 'BD', ceid: 'BD:bn' },
+  NZ: { name: 'New Zealand', flag: '🇳🇿', hl: 'en-NZ', gl: 'NZ', ceid: 'NZ:en' },
+  IE: { name: 'Ireland', flag: '🇮🇪', hl: 'en-IE', gl: 'IE', ceid: 'IE:en' },
+};
+
+const NEWS_TOPICS = {
+  world: 'WORLD', business: 'BUSINESS', technology: 'TECHNOLOGY',
+  science: 'SCIENCE', sports: 'SPORTS', health: 'HEALTH',
+};
+
+function googleNewsUrl(country, q, cat) {
+  const c = NEWS_COUNTRIES[country] || NEWS_COUNTRIES.US;
+  const base = `hl=${c.hl}&gl=${c.gl}&ceid=${c.ceid}`;
+  if (q) return `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&${base}`;
+  const topic = NEWS_TOPICS[cat];
+  if (topic) return `https://news.google.com/rss/headlines/section/topic/${topic}?${base}`;
+  return `https://news.google.com/rss?${base}`;
+}
+
+async function countryNewsSearch(country, q, cat) {
+  const c = NEWS_COUNTRIES[country] || NEWS_COUNTRIES.US;
+  const cacheKey = `${country}:${cat || 'top'}:${q || ''}`;
+  const cached = newsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < NEWS_CACHE_TTL) return cached.items;
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 9000);
+  try {
+    const res = await fetch(googleNewsUrl(country, q, cat), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AuroraResearch/1.0; news feed reader)', 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const xml = await res.text();
+    if (!/<(item|entry)[ >]/i.test(xml)) throw new Error('Not an RSS feed');
+    const items = parseRss(xml).map(it => ({
+      ...it,
+      meta: it.meta || 'Google News',
+      location: c.name,
+      flag: c.flag,
+      country: c.code,
+    }));
+    newsCache.set(cacheKey, { items, ts: Date.now() });
+    return items;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Minimal RSS/Atom parser (regex-based, zero deps — handles BBC/Guardian/TechCrunch/Verge/Google News)
 function parseRss(xml) {
   const items = [];
   const body = String(xml || '');
@@ -372,12 +464,14 @@ function parseRss(xml) {
       grab(/<description[^>]*>([\s\S]*?)<\/description>/i) || grab(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
     ))).trim();
     const pubRaw = grab(/<pubDate>([\s\S]*?)<\/pubDate>/i).trim() || grab(/<updated>([\s\S]*?)<\/updated>/i).trim();
+    const source = decodeEntities(stripCdata(grab(/<source[^>]*>([\s\S]*?)<\/source>/i))).trim();
     if (!title || !link) continue;
     items.push({
       title: title.slice(0, 200),
       url: link,
       snippet: desc.slice(0, 320),
       publishedAt: pubRaw ? new Date(pubRaw).getTime() : null,
+      meta: source.slice(0, 60) || 'News',
     });
   }
   return items;
@@ -433,3 +527,5 @@ exports._decodeEntities = decodeEntities;
 exports._parseDdgHtml = parseDdgHtml;
 exports._parseRss = parseRss;
 exports._NEWS_FEEDS = NEWS_FEEDS;
+exports._NEWS_COUNTRIES = NEWS_COUNTRIES;
+exports._googleNewsUrl = googleNewsUrl;

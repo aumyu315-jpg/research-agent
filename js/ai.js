@@ -13,6 +13,17 @@ const AI = (() => {
     finalizing: 'Finalizing & citing',
   };
 
+  const CHAT_SYSTEM = `You are Aurora, a brilliant, approachable AI assistant embedded in a news & research studio.
+You help users understand any topic in depth — news events, science, history, technology, markets, and more.
+
+# GUIDELINES:
+- Answer directly and conversationally. No preamble like "Sure!" or "Great question!".
+- Be accurate; if uncertain, say so honestly and give the user a way to verify.
+- Use **bold** for key terms and ==double equals== to highlight dates, numbers, or the single most important fact.
+- Keep answers focused but complete — go deeper when the user asks to.
+- Use markdown: bullets, short lists, and occasional bold. Avoid giant walls of text.
+- If the user references "the news" or "today's stories", you may not have their exact feed — answer from general knowledge and suggest they run a search or AI summary for live specifics.`;
+
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // ── Prompt ──
@@ -52,6 +63,7 @@ const AI = (() => {
 - Be precise about time: note recency or staleness of information.
 - Write in crisp, professional prose. No fluff, no filler, no marketing tone.
 - Markdown formatting: bold key terms, bullet lists, tables for comparisons.
+- HIGHLIGHT IMPORTANT LINES & DATES: wrap the single most important fact in each section and every key date/year in ==double equals== so they render visually highlighted (e.g., ==July 2026==, ==$120B==, ==53%==). This is critical — the reader scans the highlighted text.
 - Target 600–1000 words. No preamble — start directly with "## Executive Summary".`,
       user: `Today's date: ${today}
 
@@ -62,6 +74,26 @@ Here are the web search results gathered from news, articles, papers, books, Q&A
 ${packed}
 
 Now write the professional research report following your structure exactly.`,
+    };
+  }
+
+  // ── Chat prompt builder (conversational, uses the same provider chain) ──
+  function buildChatPrompt(messages) {
+    const transcript = (messages || []).slice(-12).map(m =>
+      `${m.role === 'user' ? 'User' : 'Aurora'}: ${m.content}`).join('\n\n');
+    return {
+      system: CHAT_SYSTEM,
+      user: `Conversation so far:\n\n${transcript}\n\nAnswer the latest question above.`,
+    };
+  }
+
+  // Local chat fallback — works offline, always succeeds
+  function localChatReply(messages) {
+    const last = [...(messages || [])].reverse().find(m => m.role === 'user');
+    const q = (last && last.content || '').slice(0, 200);
+    return {
+      markdown: `I'm running in offline/summary mode right now, so I'll give you a structured starting point for: *"${q}"*\n\n- Check the **News** tab for the latest live headlines.\n- Use the **Research** tab to generate a fully-sourced AI report.\n- The highlights (==dates==, ==numbers==) come from the AI report — try it!\n\n*(Reconnect to get my full conversational answers.)*`,
+      provider: 'local',
     };
   }
 
@@ -341,10 +373,31 @@ Now write the professional research report following your structure exactly.`,
   // ── Orchestrator ──
   async function generate(query, results, settings, handlers, signal, fullContent) {
     const prompt = buildPrompt(query, results, fullContent);
-    const errors = [];
+    try {
+      return await runChain(prompt, settings, handlers, signal);
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      handlers.onProgress && handlers.onProgress(PROGRESS.preparing, 1);
+      return localSynthesis(query, results);
+    }
+  }
 
-    // Ordered chain — keyed providers are preferred when configured:
-    // selected keyed provider -> other keyed providers -> pollinations -> local
+  // ── Chat: conversational completion through the same provider chain ──
+  async function chat(messages, settings, handlers, signal) {
+    const prompt = buildChatPrompt(messages);
+    try {
+      const out = await runChain(prompt, settings, handlers, signal);
+      return out;
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      handlers.onProgress && handlers.onProgress(PROGRESS.preparing, 1);
+      return localChatReply(messages);
+    }
+  }
+
+  // Shared provider fallback chain: selected keyed provider → other keyed → pollinations → local
+  async function runChain(prompt, settings, handlers, signal) {
+    const errors = [];
     const attempts = [];
     const add = (n, fn) => { if (!attempts.some(a => a.n === n)) attempts.push({ n, fn }); };
 
@@ -366,10 +419,9 @@ Now write the professional research report following your structure exactly.`,
       }
     }
 
-    // Guaranteed fallback — always succeeds
-    handlers.onProgress(PROGRESS.preparing, 1);
-    return localSynthesis(query, results);
+    handlers.onProgress && handlers.onProgress(PROGRESS.preparing, 1);
+    throw new Error(errors.join(' | ') || 'All providers failed');
   }
 
-  return { generate, buildPrompt, PROGRESS, localSynthesis };
+  return { generate, chat, buildPrompt, buildChatPrompt, localChatReply, localSynthesis, PROGRESS };
 })();

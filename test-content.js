@@ -3,8 +3,8 @@ const fs = require('fs');
 const fnSrc = fs.readFileSync('netlify/functions/aurora.js', 'utf8');
 // The function uses CommonJS `exports.*` — inject the module globals as params
 const mod = { exports: {} };
-const run = new Function('exports', 'module', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS };');
-const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS } = run(mod.exports, mod);
+const run = new Function('exports', 'module', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl };');
+const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl } = run(mod.exports, mod);
 
 const tests = [
   {
@@ -126,6 +126,40 @@ const tests = [
     name: 'news feeds defined for all live categories',
     fn: () => JSON.stringify(Object.keys(NEWS_FEEDS).sort()),
     expect: ['top', 'world', 'tech', 'business', 'science', 'sports'],
+  },
+  {
+    name: 'Google News parser extracts source outlet as meta',
+    fn: () => JSON.stringify(parseRss(
+      '<rss><channel>' +
+      '<item><title>Headline one</title><link>https://news.google.com/rss/articles/abc</link>' +
+      '<pubDate>Wed, 30 Jul 2026 10:00:00 GMT</pubDate>' +
+      '<source url="https://www.cnn.com">CNN</source></item>' +
+      '<item><title>Headline two</title><link>https://news.google.com/rss/articles/def</link>' +
+      '<pubDate>Wed, 30 Jul 2026 09:00:00 GMT</pubDate>' +
+      '<source url="https://www.bbc.com">BBC News</source></item>' +
+      '</channel></rss>')),
+    expect: ['Headline one', 'news.google.com', 'CNN', 'Headline two', 'BBC News'],
+    notExpect: ['<source>'],
+  },
+  {
+    name: 'countries defined for per-country news',
+    fn: () => JSON.stringify(Object.keys(NEWS_COUNTRIES).sort()),
+    expect: ['US', 'GB', 'IN', 'JP', 'BR', 'AU'],
+  },
+  {
+    name: 'google news url builds country top feed',
+    fn: () => googleNewsUrl('IN', null, 'top'),
+    expect: ['news.google.com/rss', 'hl=en-IN', 'gl=IN', 'ceid=IN:en'],
+  },
+  {
+    name: 'google news url builds country topic section',
+    fn: () => googleNewsUrl('US', null, 'world'),
+    expect: ['headlines/section/topic/WORLD', 'ceid=US:en'],
+  },
+  {
+    name: 'google news url builds topic search query',
+    fn: () => googleNewsUrl('US', 'quantum computing', null),
+    expect: ['/rss/search?q=', 'quantum%20computing', 'hl=en-US'],
   },
 ];
 

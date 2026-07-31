@@ -380,10 +380,79 @@ const Search = (() => {
     }
   }
 
-  // Top-level live feed: serverless RSS -> HN front page -> Wikinews/GNews
-  async function liveNews(cat, settings) {
+  // ── COUNTRIES (Google News RSS locales) ──
+  const COUNTRIES = [
+    { code: 'US', name: 'United States', flag: '🇺🇸' },
+    { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+    { code: 'IN', name: 'India', flag: '🇮🇳' },
+    { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+    { code: 'DE', name: 'Germany', flag: '🇩🇪' },
+    { code: 'FR', name: 'France', flag: '🇫🇷' },
+    { code: 'IT', name: 'Italy', flag: '🇮🇹' },
+    { code: 'ES', name: 'Spain', flag: '🇪🇸' },
+    { code: 'NL', name: 'Netherlands', flag: '🇳🇱' },
+    { code: 'JP', name: 'Japan', flag: '🇯🇵' },
+    { code: 'KR', name: 'South Korea', flag: '🇰🇷' },
+    { code: 'CN', name: 'China', flag: '🇨🇳' },
+    { code: 'BR', name: 'Brazil', flag: '🇧🇷' },
+    { code: 'MX', name: 'Mexico', flag: '🇲🇽' },
+    { code: 'AR', name: 'Argentina', flag: '🇦🇷' },
+    { code: 'ZA', name: 'South Africa', flag: '🇿🇦' },
+    { code: 'NG', name: 'Nigeria', flag: '🇳🇬' },
+    { code: 'EG', name: 'Egypt', flag: '🇪🇬' },
+    { code: 'SA', name: 'Saudi Arabia', flag: '🇸🇦' },
+    { code: 'AE', name: 'UAE', flag: '🇦🇪' },
+    { code: 'IL', name: 'Israel', flag: '🇮🇱' },
+    { code: 'TR', name: 'Turkey', flag: '🇹🇷' },
+    { code: 'RU', name: 'Russia', flag: '🇷🇺' },
+    { code: 'SE', name: 'Sweden', flag: '🇸🇪' },
+    { code: 'PL', name: 'Poland', flag: '🇵🇱' },
+    { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+    { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+    { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+    { code: 'TH', name: 'Thailand', flag: '🇹🇭' },
+    { code: 'PK', name: 'Pakistan', flag: '🇵🇰' },
+    { code: 'BD', name: 'Bangladesh', flag: '🇧🇩' },
+    { code: 'NZ', name: 'New Zealand', flag: '🇳🇿' },
+    { code: 'IE', name: 'Ireland', flag: '🇮🇪' },
+  ];
+
+  function countryName(code) {
+    const c = COUNTRIES.find(x => x.code === code);
+    return c ? c.name : code;
+  }
+
+  // Serverless per-country feed + topic search (Google News RSS) with fallback
+  async function backendCountryNews(cat, country, q) {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    else params.set('cat', cat || 'top');
+    if (country) params.set('country', country);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+      const res = await fetch(`/api/news?${params}`, { signal: ctrl.signal });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.ok || !Array.isArray(data.results) || !data.results.length) return null;
+      return data.results;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Country-aware live news: serverless Google News -> global RSS -> HN front page
+  async function liveNews(cat, settings, country) {
     const key = (cat && LIVE_CATS[cat]) ? cat : 'top';
     const meta = LIVE_CATS[key];
+
+    if (country) {
+      const cnews = await backendCountryNews(key, country);
+      if (cnews && cnews.length) return { results: cnews, engine: 'gnews', sources: ['news'], country };
+    }
 
     const backend = await backendNews(key);
     if (backend && backend.length) return { results: backend, engine: 'rss', sources: ['rss'] };
@@ -407,6 +476,28 @@ const Search = (() => {
     }
     merged.sort((a, b) => (b.publishedAt || -1) - (a.publishedAt || -1));
     return { results: merged.slice(0, NEWS_LIMIT), engine: 'fallback', sources: ['hackernews', 'news'] };
+  }
+
+  // Topic news search: serverless Google News (country-scoped) -> HN search fallback
+  async function searchNews(q, settings, country) {
+    const snews = await backendCountryNews(null, country, q);
+    if (snews && snews.length) return { results: snews, engine: 'gnews', sources: ['news'], country };
+    // fallback: HN search + global live feed
+    const per = Math.min(Math.max(Number((settings || {}).perSource) || 8, 3), 15);
+    const [hn, live] = await Promise.all([
+      hackerNews(q, per).catch(() => []),
+      liveNews('top', settings).catch(() => ({ results: [] })),
+    ]);
+    const seen = new Set();
+    const merged = [];
+    for (const it of [...hn.map(h => ({ ...h, source: 'news', meta: 'Hacker News' })), ...(live.results || [])]) {
+      const dupKey = (it.title || '').toLowerCase().slice(0, 70);
+      if (seen.has(dupKey)) continue;
+      seen.add(dupKey);
+      merged.push(it);
+    }
+    merged.sort((a, b) => (b.publishedAt || -1) - (a.publishedAt || -1));
+    return { results: merged.slice(0, NEWS_LIMIT), engine: 'fallback', sources: ['news'] };
   }
 
   // ── LIVE TICKER ──
@@ -550,7 +641,7 @@ const Search = (() => {
     return { query, results, errors, sources: jobs.map(([n]) => n), detected };
   }
 
-  return { run, detectType, routeSources, TYPE_META, liveNews, liveMarkets, liveWeather, LIVE_CATS, sourceMeta: {
+  return { run, detectType, routeSources, TYPE_META, liveNews, liveMarkets, liveWeather, LIVE_CATS, COUNTRIES, countryName, searchNews, sourceMeta: {
     wikipedia:   { label: 'Wikipedia',   color: 'src-wikipedia',   icon: 'i-book' },
     hackernews:  { label: 'Hacker News', color: 'src-hackernews',  icon: 'i-hn' },
     web:         { label: 'Web',         color: 'src-web',         icon: 'i-globe' },

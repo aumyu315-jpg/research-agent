@@ -97,6 +97,35 @@ const UI = {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   },
 
+  // Promise-based confirm dialog (asks before downloads/exports)
+  confirm(title, message, okLabel = 'Download', cancelLabel = 'Cancel') {
+    return new Promise(resolve => {
+      const backdrop = this.el('div', 'modal-backdrop confirm-modal');
+      backdrop.innerHTML = `
+        <div class="modal confirm" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+          <div class="modal-head">
+            <h3 id="confirmTitle">${this.esc(title)}</h3>
+            <button class="icon-btn" data-confirm-cancel aria-label="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"/></svg></button>
+          </div>
+          <div class="modal-body confirm-body">
+            <div class="confirm-orb"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg></div>
+            <p>${message}</p>
+            <div class="confirm-actions">
+              <button class="btn btn-ghost" data-confirm-cancel>${this.esc(cancelLabel)}</button>
+              <button class="btn btn-primary" data-confirm-ok>${this.esc(okLabel)}</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(backdrop);
+      const done = v => { backdrop.remove(); resolve(v); };
+      backdrop.querySelectorAll('[data-confirm-cancel]').forEach(b => b.addEventListener('click', () => done(false)));
+      backdrop.querySelector('[data-confirm-ok]').addEventListener('click', () => done(true));
+      backdrop.addEventListener('click', e => { if (e.target === backdrop) done(false); });
+      const onKey = e => { if (e.key === 'Escape') { done(false); document.removeEventListener('keydown', onKey); } };
+      document.addEventListener('keydown', onKey);
+    });
+  },
+
   setLoading(btn, loading, label) {
     if (!btn) return;
     if (loading) {

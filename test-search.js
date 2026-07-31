@@ -3,7 +3,7 @@ const fs = require('fs');
 const Search = new Function(fs.readFileSync('js/search.js', 'utf8') + '\nreturn Search;')();
 
 let pass = 0;
-const TOTAL = 27;
+const TOTAL = 34;
 const check = (name, cond) => { pass += cond ? 1 : 0; console.log(cond ? 'PASS:' : 'FAIL:', name); };
 
 // 1. Type detection
@@ -51,6 +51,16 @@ check('live tech uses HN + Wikinews science', cats.tech.hn === true && cats.tech
 check('live business maps to business', cats.business.gnews === 'business');
 check('live science maps to science', cats.science.gnews === 'science');
 check('live sports maps to sports', cats.sports.gnews === 'sports');
+
+// 4. Countries for per-country news
+const countries = Search.COUNTRIES;
+check('countries list has 30+ entries', Array.isArray(countries) && countries.length >= 30);
+check('country US has flag and code', countries.some(c => c.code === 'US' && c.flag === '🇺🇸'));
+check('country IN present', countries.some(c => c.code === 'IN'));
+check('countryName resolves IN to India', Search.countryName('IN') === 'India');
+check('countryName falls back to code', Search.countryName('XX') === 'XX');
+check('no duplicate country codes', new Set(countries.map(c => c.code)).size === countries.length);
+check('every country has flag + name', countries.every(c => c.code && c.name && c.flag));
 
 console.log(`\n${pass}/${TOTAL} tests passed`);
 process.exit(pass === TOTAL ? 0 : 1);

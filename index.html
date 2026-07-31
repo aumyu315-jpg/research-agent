@@ -62,7 +62,8 @@
     </button>
 
     <nav class="topnav" id="topnav">
-      <a href="#" class="topnav-link active" data-view="home">Discover</a>
+      <a href="#" class="topnav-link active" data-view="news">News</a>
+      <a href="#" class="topnav-link" data-view="research">Research</a>
       <a href="#" class="topnav-link" data-view="library">Library</a>
     </nav>
 
@@ -85,8 +86,98 @@
 
   <main id="app">
 
-    <!-- ═══════════ HOME VIEW ═══════════ -->
-    <section class="view view-home" id="view-home" data-view-panel>
+    <!-- ═══════════ NEWS VIEW (daily news + chat) ═══════════ -->
+    <section class="view view-news" id="view-news" data-view-panel>
+      <div class="news-hero">
+        <div class="hero-badge"><span class="live-dot"></span> Live world coverage · any country · zero keys</div>
+        <h1 class="news-hero-title">Daily News, <span class="grad-text">Worldwide.</span></h1>
+        <p class="news-hero-sub">Pick a country for its breaking headlines — or search any topic. Every story shows its location, date &amp; time. Then chat with Aurora for deeper context.</p>
+
+        <div class="news-controls">
+          <div class="country-pick">
+            <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
+            <select id="countrySelect" class="select country-select" aria-label="Choose a country"></select>
+          </div>
+          <form class="news-searchbox" id="newsSearchForm" role="search">
+            <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+            <input id="newsSearchInput" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="Search the latest news on any topic…" />
+            <button class="news-search-go" type="submit" aria-label="Search news">
+              <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+            </button>
+          </form>
+        </div>
+        <div class="news-mode-row">
+          <span class="news-mode" id="newsModeChip"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg> Global · Top stories</span>
+          <button class="btn btn-ghost btn-sm" id="newsClearBtn" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-x"/></svg> Back to live
+          </button>
+        </div>
+      </div>
+
+      <!-- live news feed -->
+      <section class="live-news" id="liveNews" aria-label="Live news">
+        <div class="live-head">
+          <div class="live-title-wrap">
+            <span class="live-badge"><span class="live-dot"></span><svg class="ic" aria-hidden="true"><use href="#i-live"/></svg><span id="liveBadgeText">Live</span></span>
+            <h2 class="live-title" id="liveTitle">Top stories</h2>
+          </div>
+          <div class="live-actions">
+            <span class="live-updated" id="liveUpdated"></span>
+            <button class="icon-btn" id="liveRefreshBtn" title="Refresh news" aria-label="Refresh news">
+              <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>
+            </button>
+            <button class="btn btn-primary btn-brief" id="summaryBtn">
+              <svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>
+              <span>AI Summary</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="live-cats" id="liveCats" role="tablist">
+          <button class="live-cat active" data-cat="top" role="tab">Top</button>
+          <button class="live-cat" data-cat="world" role="tab">World</button>
+          <button class="live-cat" data-cat="tech" role="tab">Tech</button>
+          <button class="live-cat" data-cat="business" role="tab">Business</button>
+          <button class="live-cat" data-cat="science" role="tab">Science</button>
+          <button class="live-cat" data-cat="sports" role="tab">Sports</button>
+        </div>
+
+        <div class="live-grid" id="liveGrid"></div>
+
+        <div class="live-empty" id="liveEmpty" hidden>
+          <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-news"/></svg></div>
+          <h3>Live feed unavailable</h3>
+          <p id="liveEmptyMsg">Couldn't reach the news sources. Check your connection and try again.</p>
+        </div>
+      </section>
+
+      <!-- AI chat -->
+      <section class="chat-panel" id="chatPanel" aria-label="Ask Aurora">
+        <div class="chat-head">
+          <div class="chat-orb"><svg class="ic" aria-hidden="true"><use href="#i-qa"/></svg></div>
+          <div class="chat-head-text">
+            <h3>Ask Aurora <span class="chat-live"><span class="live-dot"></span>AI chat</span></h3>
+            <p>Follow-up questions, deep dives, or any topic — free AI answers.</p>
+          </div>
+          <button class="icon-btn" id="chatClearBtn" title="Clear chat" aria-label="Clear chat">
+            <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>
+          </button>
+        </div>
+        <div class="chat-suggests" id="chatSuggests"></div>
+        <div class="chat-messages" id="chatMessages" aria-live="polite"></div>
+        <form class="chat-form" id="chatForm" role="search">
+          <input id="chatInput" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Ask anything about the news…" />
+          <button class="chat-send" type="submit" aria-label="Send message">
+            <svg class="ic" aria-hidden="true"><use href="#i-up"/></svg>
+          </button>
+        </form>
+      </section>
+    </section>
+
+    <!-- ═══════════ RESEARCH VIEW (full reports) ═══════════ -->
+    <section class="view view-home" id="view-research" data-view-panel hidden>
       <div class="hero-bg" aria-hidden="true">
         <div class="blob blob-1"></div>
         <div class="blob blob-2"></div>
@@ -97,13 +188,13 @@
       <div class="hero-inner">
         <div class="hero-badge">
           <span class="badge-dot"></span>
-          Real-time multi-source search · Free AI synthesis
+          Deep research · full-web scraping · free AI reports
         </div>
         <h1 class="hero-title">
           Research anything.
           <span class="grad-text">Know everything.</span>
         </h1>
-        <p class="hero-sub" id="heroSub">Ask a question — Aurora sweeps the web, then writes you a beautiful, sourced report.</p>
+        <p class="hero-sub" id="heroSub">Aurora scrapes the web, papers &amp; articles, then writes a beautiful sourced report — with key facts and dates highlighted.</p>
 
         <form class="searchbox-wrap" id="searchForm" role="search">
           <div class="searchbox" id="searchbox">
@@ -133,47 +224,10 @@
       </div>
     </section>
 
-    <!-- ═══════════ LIVE NEWS ═══════════ -->
-    <section class="live-news" id="liveNews" aria-label="Live news">
-      <div class="live-head">
-        <div class="live-title-wrap">
-          <span class="live-badge"><span class="live-dot"></span><svg class="ic" aria-hidden="true"><use href="#i-live"/></svg><span id="liveBadgeText">Live</span></span>
-          <h2 class="live-title" id="liveTitle">Top stories</h2>
-        </div>
-        <div class="live-actions">
-          <span class="live-updated" id="liveUpdated"></span>
-          <button class="icon-btn" id="liveRefreshBtn" title="Refresh news" aria-label="Refresh news">
-            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>
-          </button>
-          <button class="btn btn-primary btn-brief" id="briefingBtn">
-            <svg class="ic" aria-hidden="true"><use href="#i-briefing"/></svg>
-            <span>Daily Briefing</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="live-cats" id="liveCats" role="tablist">
-        <button class="live-cat active" data-cat="top" role="tab">Top</button>
-        <button class="live-cat" data-cat="world" role="tab">World</button>
-        <button class="live-cat" data-cat="tech" role="tab">Tech</button>
-        <button class="live-cat" data-cat="business" role="tab">Business</button>
-        <button class="live-cat" data-cat="science" role="tab">Science</button>
-        <button class="live-cat" data-cat="sports" role="tab">Sports</button>
-      </div>
-
-      <div class="live-grid" id="liveGrid"></div>
-
-      <div class="live-empty" id="liveEmpty" hidden>
-        <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-news"/></svg></div>
-        <h3>Live feed unavailable</h3>
-        <p id="liveEmptyMsg">Couldn't reach the news sources. Check your connection and try again.</p>
-      </div>
-    </section>
-
     <!-- ═══════════ RESULTS VIEW ═══════════ -->
     <section class="view view-results" id="view-results" data-view-panel hidden>
       <div class="results-head">
-        <button class="back-btn" data-goto="home">
+        <button class="back-btn" data-goto="research">
           <svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> New search
         </button>
         <div class="results-query-wrap">
@@ -204,7 +258,7 @@
         <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></div>
         <h3>Nothing found</h3>
         <p id="resultsEmptyMsg">Try different keywords or check your connection.</p>
-        <button class="btn btn-ghost" data-goto="home">Try another search</button>
+        <button class="btn btn-ghost" data-goto="research">Try another search</button>
       </div>
     </section>
 
@@ -274,7 +328,7 @@
         <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg></div>
         <h3>No reports yet</h3>
         <p>Search something and generate your first AI report — it'll be saved here automatically.</p>
-        <button class="btn btn-primary" data-goto="home">
+        <button class="btn btn-primary" data-goto="research">
           <svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> Start researching
         </button>
       </div>

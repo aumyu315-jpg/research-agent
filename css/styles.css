@@ -370,11 +370,8 @@ kbd {
 }
 .lc-outlet .ic { width: 12px; height: 12px; }
 .lc-time { margin-left: auto; font-size: 11.5px; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; }
-.lc-time .ic { width: 12px; height: 12px; }
-.lc-title {
-  font-family: var(--font-display); font-size: 15.5px; font-weight: 600; line-height: 1.35;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-}
+.lc-time .ic { width: 12px; height: 12px; }.lc-title { font-family: var(--font-display); font-size: 15.5px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.lc-snippet { font-size: 12.5px; color: var(--text-2); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .lc-title a { color: var(--text-1); }
 .lc-title a:hover { color: var(--cyan); text-decoration: none; }
 .lc-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; }
@@ -815,9 +812,214 @@ input[type="range"] { flex: 1; accent-color: var(--violet); height: 4px; cursor:
 }
 .offline-banner .ic { width: 17px; height: 17px; flex-shrink: 0; }
 
+/* ═══ News view ═══ */
+.view-news { padding-top: clamp(30px, 5vh, 56px); }
+.news-hero { text-align: center; max-width: 860px; margin: 0 auto 30px; }
+.news-hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(34px, 5.6vw, 56px);
+  line-height: 1.08; font-weight: 700; letter-spacing: -.03em;
+  margin-bottom: 14px;
+}
+.news-hero-sub { color: var(--text-2); font-size: clamp(14.5px, 1.8vw, 16.5px); max-width: 620px; margin: 0 auto 26px; }
+
+.news-controls {
+  display: flex; gap: 12px; align-items: stretch; justify-content: center;
+  flex-wrap: wrap; max-width: 720px; margin: 0 auto;
+}
+.country-pick {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 8px 0 16px; border-radius: 14px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--stroke);
+  transition: all var(--dur) var(--ease); min-width: 210px;
+}
+.country-pick:focus-within { border-color: rgba(139,92,246,.6); box-shadow: var(--shadow-glow); }
+.country-pick .ic { color: var(--text-3); width: 18px; height: 18px; flex-shrink: 0; }
+.country-select {
+  flex: 1; border: none; background: transparent; padding: 13px 6px 13px 0;
+  font-size: 14.5px; font-weight: 600; cursor: pointer;
+}
+.country-select:focus { outline: none; box-shadow: none; }
+.country-select option { background: var(--bg-2); color: var(--text-1); }
+
+.news-searchbox {
+  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 260px;
+  padding: 0 8px 0 16px; border-radius: 14px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--stroke);
+  transition: all var(--dur) var(--ease);
+}
+.news-searchbox:focus-within { border-color: rgba(139,92,246,.6); box-shadow: var(--shadow-glow); }
+.news-searchbox > .ic { color: var(--text-3); width: 18px; height: 18px; flex-shrink: 0; }
+.news-searchbox input {
+  flex: 1; background: none; border: none; outline: none;
+  font-size: 15px; color: var(--text-1); padding: 13px 0; min-width: 0;
+}
+.news-searchbox input::placeholder { color: var(--text-3); }
+.news-search-go {
+  width: 40px; height: 40px; border-radius: 11px;
+  background: var(--grad); color: #fff; display: grid; place-items: center;
+  transition: all var(--dur) var(--ease); box-shadow: 0 4px 16px -4px rgba(139,92,246,.6);
+}
+.news-search-go:hover { transform: scale(1.07); filter: brightness(1.1); }
+.news-search-go .ic { width: 17px; height: 17px; }
+
+.news-mode-row {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 16px; flex-wrap: wrap;
+}
+.news-mode {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  padding: 6px 14px; border-radius: 999px;
+  background: rgba(255,255,255,.04); border: 1px solid var(--stroke);
+  animation: fadeUp .3s var(--ease);
+}
+.news-mode .ic { width: 14px; height: 14px; color: var(--cyan); }
+.btn-sm { padding: 7px 14px; font-size: 12.5px; border-radius: 999px; }
+
+/* Location chip inside live cards */
+.lc-loc {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; color: var(--text-2);
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(34,211,238,.08); border: 1px solid rgba(34,211,238,.22);
+}
+.lc-loc .flag { font-size: 12px; line-height: 1; }
+
+/* ═══ Chat panel ═══ */
+.chat-panel {
+  margin: 26px 0 10px;
+  border-radius: var(--r-lg);
+  background: var(--card); border: 1px solid var(--stroke);
+  overflow: hidden; position: relative;
+}
+.chat-panel::before {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(500px 150px at 85% 0%, rgba(139,92,246,.08), transparent 60%);
+  pointer-events: none;
+}
+.chat-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 22px; border-bottom: 1px solid var(--stroke);
+  position: relative;
+}
+.chat-orb {
+  width: 42px; height: 42px; border-radius: 13px; flex-shrink: 0;
+  background: var(--grad); display: grid; place-items: center;
+  box-shadow: 0 4px 18px -4px rgba(139,92,246,.6);
+}
+.chat-orb .ic { color: #fff; width: 20px; height: 20px; }
+.chat-head-text h3 { font-family: var(--font-display); font-size: 17px; display: flex; align-items: center; gap: 10px; }
+.chat-head-text p { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.chat-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: #fda4af; padding: 3px 9px; border-radius: 999px;
+  background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3);
+}
+.chat-live .live-dot { width: 6px; height: 6px; }
+#chatClearBtn { margin-left: auto; }
+
+.chat-suggests {
+  display: flex; gap: 8px; padding: 14px 22px 4px; flex-wrap: wrap;
+  position: relative;
+}
+.chat-suggest-chip {
+  padding: 7px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  color: var(--text-2); background: rgba(255,255,255,.045); border: 1px solid var(--stroke);
+  transition: all var(--dur) var(--ease);
+}
+.chat-suggest-chip:hover {
+  color: var(--text-1); border-color: rgba(34,211,238,.5); background: rgba(34,211,238,.1);
+  transform: translateY(-1px); text-decoration: none;
+}
+
+.chat-messages {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 22px; max-height: 460px; overflow-y: auto;
+  position: relative;
+}
+.chat-msg {
+  max-width: min(560px, 84%); padding: 13px 17px;
+  border-radius: 16px; font-size: 14px; line-height: 1.6;
+  animation: fadeUp .3s var(--ease);
+}
+.chat-msg.user {
+  align-self: flex-end;
+  background: var(--grad); color: #fff;
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 6px 20px -6px rgba(139,92,246,.5);
+}
+.chat-msg.user p { margin: 0; }
+.chat-msg.ai {
+  align-self: flex-start;
+  background: rgba(255,255,255,.05); border: 1px solid var(--stroke);
+  border-bottom-left-radius: 5px;
+}
+.chat-msg.ai .markdown-body { font-size: 14px; }
+.chat-msg.ai .markdown-body p:last-child { margin-bottom: 0; }
+.chat-msg.ai .markdown-body h2, .chat-msg.ai .markdown-body h3, .chat-msg.ai .markdown-body h4 { font-size: 14.5px; margin-top: 12px; }
+.chat-msg.ai .markdown-body h2 { padding-left: 10px; }
+.chat-msg.ai .markdown-body h2::before { width: 3px; }
+.chat-msg.typing { color: var(--text-3); font-style: italic; }
+.chat-msg-err { color: var(--red); font-size: 12.5px; align-self: flex-start; padding: 2px 6px; }
+
+.chat-form {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 22px 18px; border-top: 1px solid var(--stroke);
+  position: relative;
+}
+.chat-form input {
+  flex: 1; padding: 13px 16px; border-radius: 13px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--stroke);
+  font-size: 14.5px; color: var(--text-1); min-width: 0;
+  transition: all var(--dur) var(--ease);
+}
+.chat-form input:focus { outline: none; border-color: rgba(139,92,246,.6); box-shadow: 0 0 0 4px rgba(139,92,246,.12); }
+.chat-form input::placeholder { color: var(--text-3); }
+.chat-send {
+  width: 46px; height: 46px; border-radius: 13px; flex-shrink: 0;
+  background: var(--grad); color: #fff; display: grid; place-items: center;
+  transition: all var(--dur) var(--ease); box-shadow: 0 4px 18px -4px rgba(139,92,246,.6);
+}
+.chat-send:hover { transform: translateY(-2px) scale(1.04); filter: brightness(1.1); }
+.chat-send:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.chat-send .ic { width: 19px; height: 19px; }
+
+/* ═══ Report highlights (==text==) ═══ */
+.markdown-body mark {
+  background: linear-gradient(120deg, rgba(250,204,21,.18), rgba(251,191,36,.16));
+  color: #fde68a; padding: 1px 6px; border-radius: 6px;
+  border: 1px solid rgba(251,191,36,.35);
+  font-weight: 600;
+}
+.chat-msg.ai .markdown-body mark {
+  background: rgba(34,211,238,.14); color: #a5f3fc;
+  border-color: rgba(34,211,238,.3);
+}
+
+/* ═══ Confirm modal (download consent) ═══ */
+.confirm-modal { z-index: 260; }
+.confirm { width: min(430px, 100%); }
+.confirm-body { align-items: center; text-align: center; gap: 16px; padding: 30px 28px; }
+.confirm-orb {
+  width: 58px; height: 58px; border-radius: 18px;
+  background: var(--grad-soft); border: 1px solid var(--stroke-strong);
+  display: grid; place-items: center; color: var(--cyan);
+}
+.confirm-orb .ic { width: 26px; height: 26px; }
+.confirm-body p { color: var(--text-2); font-size: 14.5px; max-width: 340px; }
+.confirm-actions { display: flex; gap: 12px; justify-content: center; width: 100%; margin-top: 4px; }
+.confirm-actions .btn { min-width: 120px; }
+
 /* ═══ Responsive ═══ */
 @media (max-width: 720px) {
   .topnav { display: none; }
+  .news-controls { flex-direction: column; align-items: stretch; }
+  .country-pick, .news-searchbox { min-width: 0; }
+  .chat-msg { max-width: 92%; }
+  .confirm-actions { flex-direction: column-reverse; }
+  .confirm-actions .btn { width: 100%; }
   .conn-pill span:last-child { display: none; }
   .conn-pill { padding: 6px 10px; }
   .results-head { flex-direction: column; align-items: stretch; }

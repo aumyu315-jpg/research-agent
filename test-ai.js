@@ -14,7 +14,7 @@ const fakeResults = [
 ];
 
 let pass = 0;
-const TOTAL = 17;
+const TOTAL = 25;
 const check = (name, cond) => { pass += cond ? 1 : 0; console.log(cond ? 'PASS:' : 'FAIL:', name); };
 
 // 1. Prompt builder structure & professionalism
@@ -44,6 +44,23 @@ const attempts = [];
 const settings = { provider: 'pollinations', geminiKey: '', groqKey: '', openrouterKey: '', geminiModel: '', groqModel: '', openrouterModel: '' };
 // simulate by checking the built chain logic directly is not exported, so verify buildPrompt/localSynthesis edge cases instead
 check('local synthesis handles empty results', AI.localSynthesis('x', []).markdown.includes('## Executive Summary'));
+
+// 4. Chat prompt builder & local chat fallback
+const chatMessages = [
+  { role: 'user', content: 'What is the latest on quantum computing?' },
+  { role: 'assistant', content: 'Here is a quick summary...' },
+  { role: 'user', content: 'Tell me more about error correction' },
+];
+const chatPrompt = AI.buildChatPrompt(chatMessages);
+check('chat prompt has a system message', chatPrompt.system && chatPrompt.system.length > 80);
+check('chat prompt includes user content', chatPrompt.user.includes('What is the latest on quantum computing?'));
+check('chat prompt includes assistant history', chatPrompt.user.includes('Here is a quick summary'));
+check('chat prompt includes latest question', chatPrompt.user.includes('Tell me more about error correction'));
+check('chat prompt encourages highlights', chatPrompt.system.includes('=='));
+const localChat = AI.localChatReply([{ role: 'user', content: 'Is the sky blue?' }]);
+check('local chat reply always succeeds', localChat.markdown.length > 20);
+check('local chat reply quotes the question', localChat.markdown.includes('Is the sky blue?'));
+check('local chat reply marks offline mode', localChat.markdown.toLowerCase().includes('offline'));
 
 console.log(`\n${pass}/${TOTAL} tests passed`);
 process.exit(pass === TOTAL ? 0 : 1);
