@@ -46,6 +46,7 @@
     online: navigator.onLine !== false,
     liveCat: 'top',
     liveStories: [],
+    liveCatLoaded: null,   // category the currently displayed stories belong to
     liveUpdated: null,
     liveLoading: false,
   };
@@ -239,7 +240,7 @@
       const active = $$('[data-view-panel]').find(v => !v.hidden);
       if (active && active.id === 'view-home') {
         loadLiveFeed(state.liveCat, true);
-        loadTicker(true);
+        loadTicker();
       }
     }, 5 * 60 * 1000);
   }
@@ -257,12 +258,19 @@
     try {
       const res = await Search.liveNews(cat, state.settings);
       state.liveStories = res.results;
+      state.liveCatLoaded = cat;
       state.liveUpdated = Date.now();
       renderLiveFeed();
     } catch {
-      state.liveStories = [];
-      $('#liveEmpty').hidden = false;
-      $('#liveEmptyMsg').textContent = "Couldn't reach the news sources. Check your connection and try again.";
+      // keep last good stories on a silent (auto-refresh) failure or same-category retry;
+      // only show the empty state when the displayed stories wouldn't match the active tab
+      if (silent || state.liveCatLoaded === cat) {
+        renderLiveFeed();
+      } else {
+        state.liveStories = [];
+        $('#liveEmpty').hidden = false;
+        $('#liveEmptyMsg').textContent = "Couldn't reach the news sources. Check your connection and try again.";
+      }
     } finally {
       state.liveLoading = false;
       $('#liveBadgeText').textContent = 'Live';
