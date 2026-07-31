@@ -1,0 +1,109 @@
+# ⚡ Aurora — AI Research Studio
+
+Search the web across **news, articles, papers & reference sources**, then get a beautifully organized **AI research report** — all free, no API keys required by default.
+
+![stack](https://img.shields.io/badge/stack-vanilla%20JS%20%2F%20CSS%20%2F%20HTML-blueviolet)
+![ai](https://img.shields.io/badge/AI-pollinations.ai%20free%20%2B%20optional%20Gemini-22d3ee)
+
+## ✨ Features
+
+- 🔎 **10-source live search** — Wikipedia, Hacker News, **keyless web search (SearXNG → DuckDuckGo, optional Brave)**, OpenAlex + Crossref academic papers, Wikinews + (optional) GNews news, **OpenLibrary books**, **Stack Overflow Q&A**, **GitHub code & repos**, **CoinGecko live market prices**, and **Open-Meteo live weather**. Every source verified CORS-enabled & free (no keys needed for most).
+- 🤖 **Free AI reports** — automatic provider fallback chain: keyless **Pollinations.ai** → optional **Google Gemini**, **Groq** (generous free tier, blazing-fast Llama) or **OpenRouter** free models → guaranteed local smart-summary (works even fully offline). Executive-grade reports with source discipline and quantified analysis.
+- 📄 **Beautiful markdown reports** — streaming generation with live progress steps, inline `[n]` citations, key findings, analysis & sources.
+- 💾 **Offline library** — every report is auto-saved to IndexedDB. Browse, search, open, export or delete reports **even without internet**.
+- 📱 **PWA** — installable, works offline via service worker, fully responsive from phone to desktop.
+- ⚙️ **Settings** — choose AI provider, add optional keys, toggle sources, adjust result counts. Keys stay in your browser (localStorage).
+
+## 🚀 Run locally
+
+Any static file server works:
+
+```bash
+# Python
+python -m http.server 8080
+
+# or Node
+npx serve .
+```
+
+Then open `http://localhost:8080`.
+
+> ⚠️ IndexedDB & service workers require a real `http(s)` origin — don't just double-click `index.html`.
+
+### With the serverless backend (recommended)
+
+The `netlify/functions/aurora.js` function adds **full-article reading** (RAG-style reports) — Aurora fetches the actual text of top articles instead of just snippets. To run it locally:
+
+```bash
+npm install
+npm run dev   # starts Netlify Dev with functions + static site
+```
+
+Or run the static server and the function separately via the Netlify CLI.
+
+## ☁️ Deploy (free, no API keys needed on your side)
+
+### 1. Netlify — full features (functions need a real site)
+Netlify Drop deploys the static site but **not the serverless function**. For full-content reading, use the CLI/git flow:
+
+```bash
+npm install
+npx netlify login
+npx netlify deploy --prod --dir .
+```
+
+1. Or push this folder to a GitHub repo and import it at [app.netlify.com](https://app.netlify.com) — Netlify auto-detects the function.
+2. Add any secrets in **Site settings → Environment variables**: `BRAVE_API_KEY` (optional — improves web search quality; without it, the serverless function uses **keyless SearXNG instances → DuckDuckGo** automatically).
+3. Live at `https://…netlify.app` — `/api/*` routes to the function.
+
+**Netlify Drop (no account, static only):** go to [app.netlify.com/drop](https://app.netlify.com/drop), drag the folder in. Works fully except full-article reading (Aurora falls back to snippets automatically).
+
+### 2. Vercel — Git-connected
+1. Push this folder to a GitHub/GitLab repo
+2. New Project → Import → **Framework: Other** → Deploy
+3. Live at `https://…vercel.app`
+
+### 3. GitHub Pages
+1. Push to a repo
+2. Settings → Pages → Deploy from branch `main` → root
+3. Live at `https://<user>.github.io/<repo>/`
+
+## 🔑 Optional keys (Settings → gear icon)
+
+| Key | Where | Why |
+|---|---|---|
+| Gemini API key | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | Premium reports (free tier) |
+| Groq API key | [console.groq.com/keys](https://console.groq.com/keys) | Fast Llama models, very generous free tier |
+| OpenRouter key | [openrouter.ai/keys](https://openrouter.ai/keys) | Free `:free` models (reliable fallback) |
+| GNews API key | [gnews.io](https://gnews.io) | Extra live news source (free tier, 100 req/day) — Wikinews needs no key |
+
+**Without any keys** Aurora still works: it uses keyless Pollinations, and if that's rate-limited or offline, it falls back to a local smart summary built directly from the search results — so the Generate button always produces a report.
+
+**Provider preference:** when a Gemini or OpenRouter key is configured, it's preferred over keyless Pollinations automatically (better-quality reports). Set your default in Settings.
+
+## 🧠 Architecture
+
+```
+index.html              Single-page shell (4 views + settings modal + SVG sprite)
+css/styles.css          Design system — dark glass UI, aurora gradients
+js/ui.js                DOM helpers, toasts, debounce, copy/download
+js/markdown.js          Dependency-free Markdown renderer (HTML-escaped)
+js/storage.js           IndexedDB report store + localStorage settings
+js/search.js            10-source search engine (CORS-verified)
+js/content.js           Client for the serverless full-content reader
+js/ai.js                AI providers: Pollinations, Gemini, OpenRouter + local fallback
+js/app.js               App controller — routing, search, report gen, library
+netlify/functions/aurora.js   Serverless: article fetcher/extractor + keyless web search (SearXNG → DDG, optional Brave)
+netlify.toml            Functions routing (/api/*)
+sw.js / manifest        PWA offline support
+test-markdown.js        Markdown renderer unit tests
+test-content.js         Article extractor unit tests
+test-ai.js              AI prompt & synthesis unit tests
+```
+
+## 📋 Notes
+
+- Reports are stored only in **your browser** (IndexedDB) — private by default.
+- The AI synthesizes from the actual search results returned (max 16 fed to the model), so citations map to real sources.
+- Pollinations' anonymous tier is rate-limited (1 concurrent request/IP); the app retries, then falls through to keyed providers, then to a local summary — and always shows a friendly note about which provider produced the report.
+- The serverless function keeps keys server-side: `BRAVE_API_KEY` (if set) proxies Brave search through `/api/search`; without a key it falls back to **keyless SearXNG public instances (parallel, first-wins) then DuckDuckGo HTML**. Article fetching happens on the server (no CORS issues, results cached 10 min).

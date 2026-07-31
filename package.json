@@ -1,0 +1,16 @@
+{
+  "name": "aurora-research",
+  "version": "1.0.0",
+  "description": "Aurora — AI Research Studio (static app + Netlify functions)",
+  "private": true,
+  "scripts": {
+    "dev": "netlify dev",
+    "test": "node test-markdown.js && node test-content.js && node test-ai.js && node test-search.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.0"
+  }
+}

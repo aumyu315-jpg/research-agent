@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aurora — AI Research Studio</title>
+  <meta name="description" content="Search the web across news, articles and papers, and get a beautifully organized AI research report. Works offline with your saved library." />
+  <meta name="theme-color" content="#070b18" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='.5' stop-color='%23a855f7'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23g)'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23070b18'/%3E%3Cpath d='M32 16l4 9 9 4-9 4-4 9-4-9-9-4 9-4z' fill='%23fff'/%3E%3C/svg%3E" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- ═══════════ SVG SPRITE ═══════════ -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.7L19.6 10l-5.7 1.9L12 17.6l-1.9-5.7L4.4 10l5.7-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+    <symbol id="i-library" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="i-news" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0V9"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8z"/></symbol>
+    <symbol id="i-academic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/><path d="M22 10v6"/></symbol>
+    <symbol id="i-hn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-3 7z"/><path d="M9 4 12 11l3-7"/><path d="M12 11v9"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-wifi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.5a10 10 0 0 1 3.3-2.2M19 12.5a10 10 0 0 0-4-2.8"/><path d="M8.5 8.5a10 10 0 0 1 7 0"/><path d="M12 20h.01"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 4-1 6-1 6s4-1 4 4c0 1.5-1 3-3 4 1.5 0 3-.5 3-2 2 1.5 3 3.5 3 6a7 7 0 0 1-14 0c0-3 2-6 8-9z"/></symbol>
+    <symbol id="i-qa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+    <symbol id="i-market" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></symbol>
+    <symbol id="i-weather" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></symbol>
+  </svg>
+
+  <!-- ═══════════ OFFLINE BANNER ═══════════ -->
+  <div id="offlineBanner" class="offline-banner" hidden>
+    <svg class="ic" aria-hidden="true"><use href="#i-wifi-off"/></svg>
+    <span>You're offline — browsing your saved library. Reports you saved earlier are still available.</span>
+  </div>
+
+  <!-- ═══════════ TOP BAR ═══════════ -->
+  <header class="topbar">
+    <button class="brand" id="brandBtn" aria-label="Aurora home">
+      <span class="brand-orb"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg></span>
+      <span class="brand-text">aurora<span class="brand-dot">.</span></span>
+    </button>
+
+    <nav class="topnav" id="topnav">
+      <a href="#" class="topnav-link active" data-view="home">Discover</a>
+      <a href="#" class="topnav-link" data-view="library">Library</a>
+    </nav>
+
+    <div class="topbar-actions">
+      <span class="conn-pill" id="connPill" title="Connection status">
+        <span class="conn-dot"></span><span id="connText">Online</span>
+      </span>
+      <button class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings">
+        <svg class="ic" aria-hidden="true"><use href="#i-gear"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- ═══════════ HOME VIEW ═══════════ -->
+    <section class="view view-home" id="view-home" data-view-panel>
+      <div class="hero-bg" aria-hidden="true">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+        <div class="grid-overlay"></div>
+      </div>
+
+      <div class="hero-inner">
+        <div class="hero-badge">
+          <span class="badge-dot"></span>
+          Real-time multi-source search · Free AI synthesis
+        </div>
+        <h1 class="hero-title">
+          Research anything.
+          <span class="grad-text">Know everything.</span>
+        </h1>
+        <p class="hero-sub" id="heroSub">Ask a question — Aurora sweeps the web, then writes you a beautiful, sourced report.</p>
+
+        <form class="searchbox-wrap" id="searchForm" role="search">
+          <div class="searchbox" id="searchbox">
+            <svg class="ic search-ic" aria-hidden="true"><use href="#i-search"/></svg>
+            <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="e.g. Quantum computing breakthroughs 2026…" />
+            <button class="search-go" id="searchGo" type="submit" aria-label="Search">
+              <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+            </button>
+            <div class="suggestions" id="suggestions" hidden></div>
+          </div>
+          <div class="search-hints">
+            <kbd>↵</kbd> to search &nbsp;·&nbsp; <kbd>/</kbd> focus search &nbsp;·&nbsp; then <kbd>✨ Generate report</kbd>
+          </div>
+        </form>
+
+        <div class="trending" id="trending">
+          <span class="trending-label"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg> Trending</span>
+          <div class="trending-chips" id="trendingChips"></div>
+        </div>
+
+        <div class="hero-stats" id="heroStats">
+          <div class="stat"><b class="stat-num" id="statSources">5</b><span class="stat-label">live sources</span></div>
+          <div class="stat"><b class="stat-num" id="statReports">0</b><span class="stat-label">saved reports</span></div>
+          <div class="stat"><b class="stat-num">0</b><span class="stat-label">API keys needed</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════ RESULTS VIEW ═══════════ -->
+    <section class="view view-results" id="view-results" data-view-panel hidden>
+      <div class="results-head">
+        <button class="back-btn" data-goto="home">
+          <svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> New search
+        </button>
+        <div class="results-query-wrap">
+          <h2 class="results-query" id="resultsQuery"></h2>
+          <span class="results-meta" id="resultsMeta"></span>
+          <span class="detected-badge" id="detectedBadge" hidden></span>
+        </div>
+        <button class="btn btn-primary report-cta" id="generateBtn">
+          <svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>
+          <span>Generate AI report</span>
+        </button>
+      </div>
+
+      <div class="source-tabs" id="sourceTabs" role="tablist"></div>
+
+      <div class="results-grid" id="resultsGrid"></div>
+
+      <div class="results-loading" id="resultsLoading" hidden>
+        <div class="orbit">
+          <div class="orbit-ring"></div>
+          <div class="orbit-core"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg></div>
+        </div>
+        <p class="results-loading-text" id="resultsLoadingText">Sweeping the web…</p>
+        <p class="results-loading-sub">Contacting Wikipedia, Hacker News, academic papers &amp; more</p>
+      </div>
+
+      <div class="empty-state" id="resultsEmpty" hidden>
+        <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></div>
+        <h3>Nothing found</h3>
+        <p id="resultsEmptyMsg">Try different keywords or check your connection.</p>
+        <button class="btn btn-ghost" data-goto="home">Try another search</button>
+      </div>
+    </section>
+
+    <!-- ═══════════ REPORT VIEW ═══════════ -->
+    <section class="view view-report" id="view-report" data-view-panel hidden>
+      <div class="report-head">
+        <button class="back-btn" id="reportBackBtn">
+          <svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Back
+        </button>
+        <div class="report-actions">
+          <button class="icon-btn" id="copyReportBtn" title="Copy markdown">
+            <svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>
+          </button>
+          <button class="icon-btn" id="downloadReportBtn" title="Download .md">
+            <svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>
+          </button>
+          <button class="icon-btn" id="regenerateBtn" title="Regenerate">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="report-hero">
+        <span class="report-kicker"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> AI research report</span>
+        <h1 class="report-title" id="reportTitle"></h1>
+        <div class="report-meta" id="reportMeta"></div>
+      </div>
+
+      <div class="report-progress" id="reportProgress" hidden>
+        <ol class="progress-steps" id="progressSteps"></ol>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+
+      <article class="report-body markdown-body" id="reportBody"></article>
+
+      <div class="report-sources" id="reportSources" hidden>
+        <h3>Sources consulted</h3>
+        <div class="report-sources-list" id="reportSourcesList"></div>
+      </div>
+
+      <div class="report-saved-banner" id="savedBanner" hidden>
+        <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>
+        Saved to your library — available offline
+      </div>
+    </section>
+
+    <!-- ═══════════ LIBRARY VIEW ═══════════ -->
+    <section class="view view-library" id="view-library" data-view-panel hidden>
+      <div class="library-head">
+        <div>
+          <h2 class="library-title">Your library</h2>
+          <p class="library-sub" id="librarySub">Saved reports — always available, even offline.</p>
+        </div>
+        <button class="btn btn-ghost" id="exportLibBtn">
+          <svg class="ic" aria-hidden="true"><use href="#i-download"/></svg> Export all
+        </button>
+      </div>
+
+      <div class="library-search">
+        <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+        <input type="text" id="librarySearch" placeholder="Filter your reports…" />
+      </div>
+
+      <div class="library-grid" id="libraryGrid"></div>
+
+      <div class="empty-state" id="libraryEmpty" hidden>
+        <div class="empty-orb"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg></div>
+        <h3>No reports yet</h3>
+        <p>Search something and generate your first AI report — it'll be saved here automatically.</p>
+        <button class="btn btn-primary" data-goto="home">
+          <svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> Start researching
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <span>aurora<span class="brand-dot">.</span></span>
+    <span class="footer-note">Free AI research · your data stays in your browser</span>
+  </footer>
+
+  <!-- ═══════════ SETTINGS MODAL ═══════════ -->
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <h3 id="settingsTitle">Settings</h3>
+        <button class="icon-btn" data-close-modal aria-label="Close">
+          <svg class="ic" aria-hidden="true"><use href="#i-x"/></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <section class="set-group">
+          <h4>AI provider</h4>
+          <p class="set-hint">Aurora tries providers in order until one works. Pollinations is keyless but can be rate-limited; add a free Gemini or OpenRouter key for reliability.</p>
+          <div class="provider-cards" id="providerCards">
+            <label class="provider-card" data-provider="pollinations">
+              <input type="radio" name="provider" value="pollinations" checked />
+              <span class="pc-title">Pollinations <span class="pill-free">Free · no key</span></span>
+              <span class="pc-desc">Keyless open models. Zero setup, occasional rate limits.</span>
+            </label>
+            <label class="provider-card" data-provider="gemini">
+              <input type="radio" name="provider" value="gemini" />
+              <span class="pc-title">Google Gemini <span class="pill-key">Free tier</span></span>
+              <span class="pc-desc">Excellent quality. Needs a free API key.</span>
+            </label>
+            <label class="provider-card" data-provider="groq">
+              <input type="radio" name="provider" value="groq" />
+              <span class="pc-title">Groq <span class="pill-key">Generous free tier</span></span>
+              <span class="pc-desc">Blazing-fast Llama models. Needs a free API key.</span>
+            </label>
+            <label class="provider-card" data-provider="openrouter">
+              <input type="radio" name="provider" value="openrouter" />
+              <span class="pc-title">OpenRouter <span class="pill-key">Free models</span></span>
+              <span class="pc-desc">Many free models (:free). Needs a free API key.</span>
+            </label>
+          </div>
+        </section>
+
+        <section class="set-group" id="geminiGroup" hidden>
+          <h4>Gemini API key <span class="pill-key">optional</span></h4>
+          <p class="set-hint">Free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Stored only in your browser.</p>
+          <input type="password" class="input" id="geminiKey" placeholder="AIza…" autocomplete="off" />
+          <div class="set-row">
+            <label class="set-label" for="geminiModel">Model</label>
+            <select class="select" id="geminiModel">
+              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+              <option value="gemini-flash-latest">gemini-flash-latest</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="set-group" id="groqGroup" hidden>
+          <h4>Groq API key <span class="pill-key">optional</span></h4>
+          <p class="set-hint">Free at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>. Very generous free tier (thousands of requests/day).</p>
+          <input type="password" class="input" id="groqKey" placeholder="gsk_…" autocomplete="off" />
+          <div class="set-row">
+            <label class="set-label" for="groqModel">Model</label>
+            <select class="select" id="groqModel">
+              <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+              <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+              <option value="gemma2-9b-it">gemma2-9b-it</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="set-group" id="openrouterGroup" hidden>
+          <h4>OpenRouter API key <span class="pill-key">optional</span></h4>
+          <p class="set-hint">Free at <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>. Models with <code>:free</code> suffix cost nothing.</p>
+          <input type="password" class="input" id="openrouterKey" placeholder="sk-or-…" autocomplete="off" />
+          <div class="set-row">
+            <label class="set-label" for="openrouterModel">Model</label>
+            <input type="text" class="input" id="openrouterModel" placeholder="meta-llama/llama-3.3-70b-instruct:free" />
+          </div>
+        </section>
+
+        <section class="set-group">
+          <h4>Sources</h4>
+          <p class="set-hint">Toggle which sources Aurora searches. GNews (live news) needs a free key — <a href="https://gnews.io" target="_blank" rel="noopener">gnews.io</a>.</p>
+          <div class="set-row"><label class="toggle-row" for="srcWikipedia"><span>Wikipedia &amp; Wikinews</span><span class="toggle"><input type="checkbox" id="srcWikipedia" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcHackerNews"><span>Hacker News</span><span class="toggle"><input type="checkbox" id="srcHackerNews" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcWeb"><span>Web (DuckDuckGo)</span><span class="toggle"><input type="checkbox" id="srcWeb" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcAcademic"><span>Academic papers (OpenAlex)</span><span class="toggle"><input type="checkbox" id="srcAcademic" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcNews"><span>Live news (Wikinews + GNews)</span><span class="toggle"><input type="checkbox" id="srcNews" /><span class="track"></span></span></label></div>
+          <div class="set-row news-key-row" hidden>
+            <label class="set-label" for="newsKey">GNews API key (optional — Wikinews needs no key)</label>
+            <input type="password" class="input" id="newsKey" placeholder="Free key from gnews.io" autocomplete="off" />
+          </div>
+          <div class="set-row"><label class="toggle-row" for="srcBooks"><span>Books (OpenLibrary)</span><span class="toggle"><input type="checkbox" id="srcBooks" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcQa"><span>Q&A (Stack Overflow)</span><span class="toggle"><input type="checkbox" id="srcQa" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcCode"><span>Code &amp; repos (GitHub)</span><span class="toggle"><input type="checkbox" id="srcCode" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcMarkets"><span>Markets (CoinGecko live prices)</span><span class="toggle"><input type="checkbox" id="srcMarkets" checked /><span class="track"></span></span></label></div>
+          <div class="set-row"><label class="toggle-row" for="srcWeather"><span>Weather (Open-Meteo live)</span><span class="toggle"><input type="checkbox" id="srcWeather" checked /><span class="track"></span></span></label></div>
+        </section>
+
+        <section class="set-group">
+          <h4>Smart routing</h4>
+          <p class="set-hint">Detect the query type (weather, markets, news, academic, code, books, Q&amp;A) and prioritize matching sources — faster results and fewer wasted API calls.</p>
+          <div class="set-row"><label class="toggle-row" for="autoRoute"><span>Auto-prioritize sources by query type</span><span class="toggle"><input type="checkbox" id="autoRoute" checked /><span class="track"></span></span></label></div>
+        </section>
+
+        <section class="set-group">
+          <h4>Report depth</h4>
+          <p class="set-hint">Read the full text of top articles before writing (RAG-style). Requires the serverless backend — deploy to Netlify with the included function, or leave off to use snippets.</p>
+          <div class="set-row"><label class="toggle-row" for="contentReader"><span>Read full articles</span><span class="toggle"><input type="checkbox" id="contentReader" checked /><span class="track"></span></span></label></div>
+          <p class="set-hint" id="backendStatus">Serverless backend: checking…</p>
+        </section>
+
+        <section class="set-group">
+          <h4>Results</h4>
+          <div class="set-row">
+            <label class="set-label" for="perSource">Results per source</label>
+            <div class="range-row"><input type="range" id="perSource" min="3" max="15" value="8" /><span class="range-val" id="perSourceVal">8</span></div>
+          </div>
+        </section>
+
+        <section class="set-group danger">
+          <h4>Danger zone</h4>
+          <div class="set-row">
+            <button class="btn btn-danger" id="clearLibBtn">
+              <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Clear library
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <script src="js/ui.js"></script>
+  <script src="js/markdown.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/search.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
