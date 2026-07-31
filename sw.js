@@ -1,7 +1,7 @@
 /* ─────────────────────────────────────────────
    Aurora — service worker (offline app shell)
    ───────────────────────────────────────────── */
-const CACHE = 'aurora-v1';
+const CACHE = 'aurora-v2';
 const SHELL = [
   './',
   './index.html',
@@ -39,17 +39,20 @@ self.addEventListener('fetch', (e) => {
   // Never cache cross-origin API calls — let them hit the network
   if (url.origin !== self.location.origin) return;
 
-  // App shell: cache-first
+  // App shell + static assets: network-first (always fresh after deploys),
+  // falling back to the cache only when offline.
   if (request.mode === 'navigate' ||
       SHELL.includes(url.pathname) ||
       /\.(css|js|webmanifest|png|svg|ico)$/.test(url.pathname)) {
     e.respondWith(
-      caches.match(request).then(cached =>
-        cached || fetch(request).then(res => {
+      fetch(request).then(res => {
+        if (res.ok) {
           const copy = res.clone();
           caches.open(CACHE).then(c => c.put(request, copy));
-          return res;
-        }).catch(() => caches.match('./index.html'))
+        }
+        return res;
+      }).catch(() =>
+        caches.match(request).then(cached => cached || caches.match('./index.html'))
       )
     );
   }
