@@ -113,14 +113,16 @@
 
 - **Phase 1 — Headline summaries (SHIPPED):** Listen button on news cards + search results → speaks headline + snippet locally. Zero keys, zero cost, < 100ms latency. Voice + speed selection, persistent player, full a11y.
 - **Phase 2 — Full article narration (SHIPPED):** After the snippet, seamlessly appends the full article text fetched through the existing `/api/content` backend. Also enables **"Listen to this report"** for AI research reports (fully Aurora-owned content).
-- **Phase 3 — Neural voices (optional, documented):** `/api/tts` serverless endpoint (Google/Azure/Polly free tier), content-hash audio caching, provider preference in Settings with Web Speech fallback. Shipped only if voice quality becomes a product differentiator.
+- **Phase 3 — Cloned narrator voice (SHIPPED):** `/api/tts` + `/api/tts/voice` serverless endpoints (ElevenLabs), instant voice cloning of the bundled `assets/narrator-voice.m4a` sample, sha1 audio caching (24h), Settings UI (key + clone + test), graceful Web Speech fallback whenever no key is set or the backend is unavailable. Voice engine preference lives in `js/tts.js` (`setNarrator` / `narratorEnabled`).
 
 ---
 
 ## 7. Files Touched (this change)
-- `js/tts.js` (new) — Web Speech engine: voices, chunking, queue, settings.
-- `index.html` — sprite icons, listen buttons, player bar, report listen.
-- `css/styles.css` — player bar, listen buttons, equalizer, responsive.
-- `js/app.js` — wiring: cards, results, report, player controls.
-- `js/search.js` — `speakText()` helper for story → text (title+snippet, full article).
-- `sw.js`, `package.json`, `test-tts.js` — app-shell cache, test script, tests.
+- `js/tts.js` — engine: Web Speech (voices, chunking, queue) + neural narrator (`/api/tts`, pause/resume/cancel, fallback).
+- `index.html` — sprite icons, listen buttons, player bar, report listen, narrator settings group, FX canvas.
+- `css/styles.css` — player bar, listen buttons, equalizer, narrator settings, futuristic glass hero stage.
+- `js/app.js` — wiring: cards, results, report, player controls, narrator clone/test, FX init.
+- `netlify/functions/aurora.js` — `/api/tts`, `/api/tts/voice`, `/api/tts/status` (ElevenLabs, cached).
+- `js/fx.js` (new) — ambient constellation canvas background.
+- `assets/narrator-voice.m4a` (new) — bundled narrator voice sample.
+- `sw.js`, `README.md`, `package.json`, `test-tts.js`, `test-content.js` — cache, docs, tests.

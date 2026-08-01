@@ -3,9 +3,14 @@
    Endpoints (deployed at /api/*):
      POST /api/content   { urls: [...] } -> { ok, results: { url: text|null } }
      GET  /api/search?q=  (optional, needs BRAVE_API_KEY)
+     POST /api/tts        { text, voice_id, model } -> audio/mpeg (ElevenLabs narrator)
+     POST /api/tts/voice  { name, audio(base64), mime } -> { voice_id }
+     GET  /api/tts/status -> { ok, configured }
      GET  /api/health
    CORS-enabled so the static site can call it.
    ───────────────────────────────────────────── */
+const crypto = require('crypto');
+
 const CACHE_TTL = 10 * 60 * 1000;        // 10 min
 const MAX_RESULTS = 8;
 const MAX_PAGE_BYTES = 1.5 * 1024 * 1024; // 1.5 MB
@@ -250,6 +255,78 @@ async function webSearch(q) {
   return { items, engine: 'duckduckgo' };
 }
 
+// ── TTS narrator (ElevenLabs, optional ELEVENLABS_API_KEY) ──
+const TTS_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day — audio is expensive, cache long
+const ttsCache = new Map(); // sha1(voice:model:text) -> { audio: Buffer, ts }
+const TTS_DEFAULT_MODEL = 'eleven_turbo_v2_5';
+
+// Deterministic cache key (exported for tests)
+function ttsCacheKey(voiceId, text, model) {
+  return crypto.createHash('sha1').update(`${voiceId}:${model || TTS_DEFAULT_MODEL}:${text}`).digest('hex');
+}
+
+async function elevenTts(text, voiceId, model, speed) {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error('ELEVENLABS_API_KEY not configured');
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const res = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
+      {
+        method: 'POST',
+        headers: { 'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({
+          text: String(text || '').slice(0, 5000),
+          model_id: model || process.env.ELEVENLABS_MODEL || TTS_DEFAULT_MODEL,
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.8,
+            ...(speed ? { speed: Math.min(Math.max(speed, 0.5), 2) } : {}),
+          },
+        }),
+        signal: ctrl.signal,
+      });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      throw new Error(`ElevenLabs TTS ${res.status}: ${err.slice(0, 160)}`);
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf.length) throw new Error('ElevenLabs returned empty audio');
+    return buf;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Instant voice clone from a base64 audio sample (e.g. assets/narrator-voice.m4a)
+async function elevenAddVoice(name, audioB64, mime) {
+  const key = process.env.ELEVENLABS_API_KEY;
+  if (!key) throw new Error('ELEVENLABS_API_KEY not configured');
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const form = new FormData();
+    form.append('name', String(name || 'Aurora Narrator').slice(0, 60));
+    form.append('files', new Blob([Buffer.from(audioB64, 'base64')], { type: mime || 'audio/mp4' }), 'voice.m4a');
+    const res = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+      method: 'POST',
+      headers: { 'xi-api-key': key },
+      body: form,
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      throw new Error(`ElevenLabs voice add ${res.status}: ${err.slice(0, 160)}`);
+    }
+    const data = await res.json();
+    if (!data.voice_id) throw new Error('No voice_id returned');
+    return data.voice_id;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ── handler ──
 exports.handler = async (event) => {
   const headers = {
@@ -293,6 +370,49 @@ exports.handler = async (event) => {
       if (!NEWS_FEEDS[cat]) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'unknown category' }) };
       const items = await newsSearch(cat);
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, category: cat, results: items, engine: 'rss' }) };
+    }
+
+    // narrator voice cloning (multipart audio -> ElevenLabs -> voice_id)
+    if (event.httpMethod === 'POST' && url.pathname.endsWith('/tts/voice')) {
+      const body = JSON.parse(event.body || '{}');
+      const audio = String(body.audio || '');
+      if (!audio) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing audio (base64)' }) };
+      if (audio.length > 4 * 1024 * 1024) {
+        return { statusCode: 413, headers, body: JSON.stringify({ ok: false, error: 'audio too large (max ~3 MB)' }) };
+      }
+      const voiceId = await elevenAddVoice(String(body.name || 'Aurora Narrator').slice(0, 60), audio, body.mime || 'audio/mp4');
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, voice_id: voiceId }) };
+    }
+
+    // narrator status (key configured?)
+    if (event.httpMethod === 'GET' && url.pathname.endsWith('/tts/status')) {
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, configured: !!process.env.ELEVENLABS_API_KEY }) };
+    }
+
+    // neural narration (cached audio bytes)
+    if (event.httpMethod === 'POST' && url.pathname.endsWith('/tts')) {
+      const body = JSON.parse(event.body || '{}');
+      const text = String(body.text || '').trim();
+      const voiceId = String(body.voice_id || '').trim();
+      const model = String(body.model || '').trim();
+      const speed = Math.min(Math.max(Number(body.speed) || 1, 0.5), 2); // honor player speed
+      if (!text) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing text' }) };
+      if (!voiceId) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing voice_id' }) };
+
+      const hash = ttsCacheKey(voiceId, text, model + '|' + speed);
+      // audio bytes are cached server-side for 24h, so a short browser cache is fine (and cheaper)
+      const audioHeaders = { ...headers, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=3600' };
+      const hit = ttsCache.get(hash);
+      if (hit && Date.now() - hit.ts < TTS_CACHE_TTL) {
+        return { statusCode: 200, headers: audioHeaders, isBase64Encoded: true, body: hit.audio.toString('base64') };
+      }
+      const audio = await elevenTts(text, voiceId, model, speed);
+      if (ttsCache.size > 200) {
+        const oldest = ttsCache.keys().next().value;
+        if (oldest) ttsCache.delete(oldest);
+      }
+      ttsCache.set(hash, { audio, ts: Date.now() });
+      return { statusCode: 200, headers: audioHeaders, isBase64Encoded: true, body: audio.toString('base64') };
     }
 
     // content extraction
@@ -529,3 +649,6 @@ exports._parseRss = parseRss;
 exports._NEWS_FEEDS = NEWS_FEEDS;
 exports._NEWS_COUNTRIES = NEWS_COUNTRIES;
 exports._googleNewsUrl = googleNewsUrl;
+exports._ttsCacheKey = ttsCacheKey;
+exports._elevenTts = elevenTts;
+exports._elevenAddVoice = elevenAddVoice;

@@ -3,8 +3,8 @@ const fs = require('fs');
 const fnSrc = fs.readFileSync('netlify/functions/aurora.js', 'utf8');
 // The function uses CommonJS `exports.*` — inject the module globals as params
 const mod = { exports: {} };
-const run = new Function('exports', 'module', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl };');
-const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl } = run(mod.exports, mod);
+const run = new Function('exports', 'module', 'require', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl, ttsCacheKey: exports._ttsCacheKey };');
+const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl, ttsCacheKey } = run(mod.exports, mod, require);
 
 const tests = [
   {
@@ -160,6 +160,17 @@ const tests = [
     name: 'google news url builds topic search query',
     fn: () => googleNewsUrl('US', 'quantum computing', null),
     expect: ['/rss/search?q=', 'quantum%20computing', 'hl=en-US'],
+  },
+  {
+    name: 'tts cache key is deterministic and stable',
+    fn: () => {
+      const a = ttsCacheKey('voiceA', 'hello world', 'eleven_turbo_v2_5');
+      const b = ttsCacheKey('voiceA', 'hello world', 'eleven_turbo_v2_5');
+      const c = ttsCacheKey('voiceB', 'hello world', 'eleven_turbo_v2_5');
+      const d = ttsCacheKey('voiceA', 'hello world', 'eleven_multilingual_v2');
+      return [a === b, a !== c, a !== d, a.length === 40].join(',');
+    },
+    expect: ['true,true,true,true'],
   },
 ];
 

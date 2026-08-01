@@ -15,6 +15,9 @@
 </head>
 <body>
 
+  <!-- ═══════════ AMBIENT FX BACKDROP ═══════════ -->
+  <canvas id="fxCanvas" aria-hidden="true"></canvas>
+
   <!-- ═══════════ SVG SPRITE ═══════════ -->
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
@@ -189,41 +192,87 @@
         <div class="grid-overlay"></div>
       </div>
 
-      <div class="hero-inner">
-        <div class="hero-badge">
-          <span class="badge-dot"></span>
-          Deep research · full-web scraping · free AI reports
-        </div>
-        <h1 class="hero-title">
-          Research anything.
-          <span class="grad-text">Know everything.</span>
-        </h1>
-        <p class="hero-sub" id="heroSub">Aurora scrapes the web, papers &amp; articles, then writes a beautiful sourced report — with key facts and dates highlighted.</p>
+      <div class="hero-inner hero-grid">
+        <div class="hero-copy">
+          <div class="hero-badge">
+            <span class="badge-dot"></span>
+            Deep research · full-web scraping · free AI reports
+          </div>
+          <h1 class="hero-title">
+            Research anything.
+            <span class="grad-text">Know everything.</span>
+          </h1>
+          <p class="hero-sub" id="heroSub">Aurora scrapes the web, papers &amp; articles, then writes a beautiful sourced report — with key facts and dates highlighted.</p>
 
-        <form class="searchbox-wrap" id="searchForm" role="search">
-          <div class="searchbox" id="searchbox">
-            <svg class="ic search-ic" aria-hidden="true"><use href="#i-search"/></svg>
-            <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
-                   placeholder="e.g. Quantum computing breakthroughs 2026…" />
-            <button class="search-go" id="searchGo" type="submit" aria-label="Search">
+          <form class="searchbox-wrap" id="searchForm" role="search">
+            <div class="searchbox" id="searchbox">
+              <svg class="ic search-ic" aria-hidden="true"><use href="#i-search"/></svg>
+              <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+                     placeholder="Search across millions of sources…" />
+              <button class="search-go" id="searchGo" type="submit" aria-label="Search">
+                <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+              </button>
+              <div class="suggestions" id="suggestions" hidden></div>
+            </div>
+            <div class="search-hints">
+              <kbd>↵</kbd> to search &nbsp;·&nbsp; <kbd>/</kbd> focus search &nbsp;·&nbsp; then <kbd>✨ Generate report</kbd>
+            </div>
+          </form>
+
+          <div class="trending" id="trending">
+            <span class="trending-label"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg> Trending</span>
+            <div class="trending-chips" id="trendingChips"></div>
+          </div>
+
+          <div class="hero-stats" id="heroStats">
+            <div class="stat"><b class="stat-num" id="statSources">5</b><span class="stat-label">live sources</span></div>
+            <div class="stat"><b class="stat-num" id="statReports">0</b><span class="stat-label">saved reports</span></div>
+            <div class="stat"><b class="stat-num">0</b><span class="stat-label">API keys needed</span></div>
+          </div>
+        </div>
+
+        <!-- floating glass panels — decorative stage mirroring the product vision -->
+        <div class="hero-stage" aria-hidden="true">
+          <div class="fx-panel fx-panel-search">
+            <div class="fx-searchbar">
               <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
-            </button>
-            <div class="suggestions" id="suggestions" hidden></div>
+              <span>Search across millions of sources…</span>
+              <span class="fx-kbd">⌘K</span>
+            </div>
+            <div class="fx-summary">
+              <div class="fx-summary-head">
+                <span class="fx-kicker"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg> AI SUMMARY</span>
+                <span class="fx-live"><span class="live-dot"></span> live</span>
+              </div>
+              <p>The global AI market is projected to reach <b>$1.8 trillion</b> by 2030 — up from $638B in 2025.</p>
+            </div>
+            <div class="fx-pie-wrap"><div class="fx-pie"></div><span class="fx-pie-cap">+182%</span></div>
+            <div class="fx-avatar"></div>
           </div>
-          <div class="search-hints">
-            <kbd>↵</kbd> to search &nbsp;·&nbsp; <kbd>/</kbd> focus search &nbsp;·&nbsp; then <kbd>✨ Generate report</kbd>
+
+          <div class="fx-panel fx-panel-line">
+            <span class="fx-panel-label">Insight velocity</span>
+            <svg class="fx-line" viewBox="0 0 120 44" preserveAspectRatio="none"><path d="M0 36 C 14 34, 20 26, 30 28 S 48 14, 58 18 S 76 6, 88 10 S 108 2, 120 6" fill="none" stroke="url(#fxgrad1)" stroke-width="2"/></svg>
+            <svg width="0" height="0" style="position:absolute"><defs><linearGradient id="fxgrad1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6366f1"/><stop offset=".5" stop-color="#a855f7"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs></svg>
           </div>
-        </form>
 
-        <div class="trending" id="trending">
-          <span class="trending-label"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg> Trending</span>
-          <div class="trending-chips" id="trendingChips"></div>
-        </div>
+          <div class="fx-panel fx-panel-bars">
+            <span class="fx-panel-label">Source mix</span>
+            <div class="fx-bars"><i style="--h:42%"></i><i style="--h:58%"></i><i style="--h:36%"></i><i style="--h:74%"></i><i style="--h:52%"></i><i style="--h:88%"></i><i style="--h:64%"></i><i style="--h:96%"></i></div>
+          </div>
 
-        <div class="hero-stats" id="heroStats">
-          <div class="stat"><b class="stat-num" id="statSources">5</b><span class="stat-label">live sources</span></div>
-          <div class="stat"><b class="stat-num" id="statReports">0</b><span class="stat-label">saved reports</span></div>
-          <div class="stat"><b class="stat-num">0</b><span class="stat-label">API keys needed</span></div>
+          <div class="fx-panel fx-panel-growth">
+            <span class="fx-panel-label">AI Market Growth 2030 – 2035</span>
+            <svg class="fx-line" viewBox="0 0 120 44" preserveAspectRatio="none"><path d="M0 40 C 10 38, 18 34, 28 34 S 44 26, 54 26 S 70 16, 80 18 S 104 6, 120 4" fill="none" stroke="#22d3ee" stroke-width="2"/><path d="M0 42 C 12 40, 22 36, 34 36 S 52 30, 64 30 S 86 22, 120 18" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
+          </div>
+
+          <div class="fx-panel fx-panel-brain">
+            <div class="fx-brain">
+              <svg class="b-wires" viewBox="0 0 130 90" preserveAspectRatio="none"><path d="M62 8 L34 32 M62 8 L94 32 M34 32 L18 62 M34 32 L64 50 M94 32 L64 50 M64 50 L84 78 M18 62 L64 50"/></svg>
+              <i class="b-node b-n1"></i><i class="b-node b-n2"></i><i class="b-node b-n3"></i>
+              <i class="b-node b-n4"></i><i class="b-node b-n5"></i><i class="b-node b-n6"></i><i class="b-node b-n7"></i>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -455,6 +504,25 @@
         </section>
 
         <section class="set-group">
+          <h4>Narrator voice <span class="pill-key">optional · ElevenLabs</span></h4>
+          <p class="set-hint">Aurora reads news &amp; reports aloud in a <b>cloned narrator voice</b> cloned from the bundled sample — needs a free <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> API key (10K chars/month). Without a key, Aurora uses your browser's voices for free.</p>
+          <input type="password" class="input" id="elevenKey" placeholder="ElevenLabs API key (sk_…)" autocomplete="off" />
+          <div class="set-row">
+            <label class="set-label" for="narratorModel">Model</label>
+            <input type="text" class="input" id="narratorModel" placeholder="eleven_turbo_v2_5" />
+          </div>
+          <div class="set-row narrator-row">
+            <button class="btn btn-ghost" id="cloneVoiceBtn">
+              <svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg> Clone narrator
+            </button>
+            <button class="btn btn-ghost" id="testNarratorBtn">
+              <svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> Test voice
+            </button>
+          </div>
+          <p class="set-hint" id="narratorStatus">Narrator: not configured — using browser voices.</p>
+        </section>
+
+        <section class="set-group">
           <h4>Results</h4>
           <div class="set-row">
             <label class="set-label" for="perSource">Results per source</label>
@@ -478,11 +546,11 @@
   <div class="tts-player" id="ttsPlayer" role="region" aria-label="Audio player" hidden>
     <div class="tts-eq" aria-hidden="true">
       <span></span><span></span><span></span><span></span><span></span>
-    </div>
-    <div class="tts-info">
-      <span class="tts-now">Now listening</span>
-      <span class="tts-title" id="ttsTitle" aria-live="polite"></span>
-    </div>
+    </div>      <div class="tts-info">
+        <span class="tts-now" id="ttsNow">Now listening</span>
+        <span class="tts-title" id="ttsTitle" aria-live="polite"></span>
+        <span class="tts-note">Audio generated in your browser · not affiliated with publishers</span>
+      </div>
     <div class="tts-controls">
       <button class="icon-btn" id="ttsPauseBtn" aria-label="Pause" title="Pause">
         <svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>
@@ -517,6 +585,7 @@
   <script src="js/search.js"></script>
   <script src="js/ai.js"></script>
   <script src="js/content.js"></script>
+  <script src="js/fx.js"></script>
   <script src="js/tts.js"></script>
   <script src="js/app.js"></script>
 </body>

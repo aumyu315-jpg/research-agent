@@ -8,6 +8,9 @@ Search the web across **news, articles, papers & reference sources**, then get a
 ## ✨ Features
 
 - 🔎 **10-source live search** — Wikipedia, Hacker News, **keyless web search (SearXNG → DuckDuckGo, optional Brave)**, OpenAlex + Crossref academic papers, Wikinews + (optional) GNews news, **OpenLibrary books**, **Stack Overflow Q&A**, **GitHub code & repos**, **CoinGecko live market prices**, and **Open-Meteo live weather**. Every source verified CORS-enabled & free (no keys needed for most).
+- 📰 **Live News mode** — a full daily-news section with **34 countries**, six categories (Top, World, Tech, Business, Science, Sports), topic search, a live **markets & weather ticker**, and an **AI chat** panel for follow-up questions. The **AI Summary** button turns the current feed into a full AI research report.
+- 🎧 **Listen (TTS)** — every news card, search result and AI report can be **read aloud** in your browser (Web Speech API — zero keys, zero cost). Full-article narration appends seamlessly for news; the persistent player bar offers voice + speed controls. See `TTS-STRATEGY.md`.
+- 🗣️ **Cloned narrator voice** — optionally add a free **ElevenLabs** key and Aurora clones the bundled narrator sample (`assets/narrator-voice.m4a`) into a custom voice that reads everything aloud (serverless `/api/tts` with audio caching). Falls back to browser voices automatically when no key is set.
 - 🤖 **Free AI reports** — automatic provider fallback chain: keyless **Pollinations.ai** → optional **Google Gemini**, **Groq** (generous free tier, blazing-fast Llama) or **OpenRouter** free models → guaranteed local smart-summary (works even fully offline). Executive-grade reports with source discipline and quantified analysis.
 - 📄 **Beautiful markdown reports** — streaming generation with live progress steps, inline `[n]` citations, key findings, analysis & sources.
 - 💾 **Offline library** — every report is auto-saved to IndexedDB. Browse, search, open, export or delete reports **even without internet**.
@@ -76,6 +79,9 @@ npx netlify deploy --prod --dir .
 | Groq API key | [console.groq.com/keys](https://console.groq.com/keys) | Fast Llama models, very generous free tier |
 | OpenRouter key | [openrouter.ai/keys](https://openrouter.ai/keys) | Free `:free` models (reliable fallback) |
 | GNews API key | [gnews.io](https://gnews.io) | Extra live news source (free tier, 100 req/day) — Wikinews needs no key |
+| ElevenLabs key | [elevenlabs.io](https://elevenlabs.io) | Clones the bundled narrator voice (`/api/tts`, ~10K free chars/mo) — optional |
+
+**Server-side env var:** `ELEVENLABS_API_KEY` — set this in your Netlify site (Site settings → Environment variables) to power the cloned narrator voice. The browser never sees the key; all ElevenLabs calls go through `/api/tts`.
 
 **Without any keys** Aurora still works: it uses keyless Pollinations, and if that's rate-limited or offline, it falls back to a local smart summary built directly from the search results — so the Generate button always produces a report.
 
@@ -84,21 +90,25 @@ npx netlify deploy --prod --dir .
 ## 🧠 Architecture
 
 ```
-index.html              Single-page shell (4 views + settings modal + SVG sprite)
+index.html              Single-page shell (news + research + results + report + library views, settings modal, SVG sprite, TTS player)
 css/styles.css          Design system — dark glass UI, aurora gradients
 js/ui.js                DOM helpers, toasts, debounce, copy/download
 js/markdown.js          Dependency-free Markdown renderer (HTML-escaped)
 js/storage.js           IndexedDB report store + localStorage settings
-js/search.js            10-source search engine (CORS-verified)
+js/search.js            10-source search engine + live news (countries, categories, ticker) — CORS-verified
 js/content.js           Client for the serverless full-content reader
-js/ai.js                AI providers: Pollinations, Gemini, OpenRouter + local fallback
-js/app.js               App controller — routing, search, report gen, library
-netlify/functions/aurora.js   Serverless: article fetcher/extractor + keyless web search (SearXNG → DDG, optional Brave)
+js/ai.js                AI providers: Pollinations, Gemini, Groq, OpenRouter + local fallback
+js/tts.js               Text-to-speech engine: Web Speech API + neural narrator (via /api/tts)
+js/fx.js                Ambient FX canvas — constellation/particle background
+test-tts.js             TTS chunking, sanitization & narrator-config unit tests
+js/app.js               App controller — routing, search, news, chat, report gen, library, TTS wiring
+netlify/functions/aurora.js   Serverless: article fetcher/extractor + keyless web search (SearXNG → DDG, optional Brave) + RSS news feeds
 netlify.toml            Functions routing (/api/*)
 sw.js / manifest        PWA offline support
 test-markdown.js        Markdown renderer unit tests
 test-content.js         Article extractor unit tests
 test-ai.js              AI prompt & synthesis unit tests
+test-search.js          Search engine & type-detection unit tests
 ```
 
 ## 📋 Notes
@@ -106,4 +116,5 @@ test-ai.js              AI prompt & synthesis unit tests
 - Reports are stored only in **your browser** (IndexedDB) — private by default.
 - The AI synthesizes from the actual search results returned (max 16 fed to the model), so citations map to real sources.
 - Pollinations' anonymous tier is rate-limited (1 concurrent request/IP); the app retries, then falls through to keyed providers, then to a local summary — and always shows a friendly note about which provider produced the report.
-- The serverless function keeps keys server-side: `BRAVE_API_KEY` (if set) proxies Brave search through `/api/search`; without a key it falls back to **keyless SearXNG public instances (parallel, first-wins) then DuckDuckGo HTML**. Article fetching happens on the server (no CORS issues, results cached 10 min).
+- The serverless function keeps keys server-side: `BRAVE_API_KEY` (if set) proxies Brave search through `/api/search`; without a key it falls back to **keyless SearXNG public instances (parallel, first-wins) then DuckDuckGo HTML**. Article fetching happens on the server (no CORS issues, results cached 10 min). It also aggregates **RSS news feeds** (`/api/news`) for the live News mode.
+- **TTS is 100% free & local**: audio is generated by your browser's speech engine and never stored or uploaded — full licensing rationale in `TTS-STRATEGY.md`.
