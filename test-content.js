@@ -3,8 +3,8 @@ const fs = require('fs');
 const fnSrc = fs.readFileSync('netlify/functions/aurora.js', 'utf8');
 // The function uses CommonJS `exports.*` — inject the module globals as params
 const mod = { exports: {} };
-const run = new Function('exports', 'module', 'require', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl, ttsCacheKey: exports._ttsCacheKey, extractiveSummary: exports._extractiveSummary, buildSummaryPrompt: exports._buildSummaryPrompt };');
-const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl, ttsCacheKey, extractiveSummary, buildSummaryPrompt } = run(mod.exports, mod, require);
+const run = new Function('exports', 'module', 'require', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl, ttsCacheKey: exports._ttsCacheKey, extractiveSummary: exports._extractiveSummary, buildSummaryPrompt: exports._buildSummaryPrompt, grabBalanced: exports._grabBalanced };');
+const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl, ttsCacheKey, extractiveSummary, buildSummaryPrompt, grabBalanced } = run(mod.exports, mod, require);
 
 const tests = [
   {
@@ -23,6 +23,27 @@ const tests = [
     fn: () => stripTags('<nav>Nav junk</nav><article><h1>Title</h1><p>Real content here.</p></article><footer>Foot</footer>'),
     expect: ['Title', 'Real content here.'],
     notExpect: ['Nav junk', 'Foot'],
+  },
+  {
+    name: 'Wikipedia: prefers #mw-content-text, drops infobox & language sidebar',
+    fn: () => stripTags(
+      '<div id="mw-panel"><ul><li>Languages</li><li>Afrikaans</li></ul></div>' +
+      '<div id="mw-content-text"><div class="mw-parser-output">' +
+      '<table class="infobox"><tr><td>Born 1980</td></tr></table>' +
+      '<p>Quantum computing is a field of study.</p>' +
+      '<p>It uses qubits and superposition.</p>' +
+      '</div></div>' +
+      '<div id="footer">Copyright info</div>'),
+    expect: ['Quantum computing is a field of study.', 'It uses qubits and superposition.'],
+    notExpect: ['Born 1980', 'Languages', 'Afrikaans', 'Copyright'],
+  },
+  {
+    name: 'balanced container grabber handles nested divs',
+    fn: () => {
+      const s = grabBalanced('<div id="mw-content-text"><div><p>deep</p></div><p>outer</p></div>tail', /<div[^>]*id=["']mw-content-text["'][^>]*>/i);
+      return JSON.stringify([s.includes('deep'), s.includes('outer'), !s.includes('tail')]);
+    },
+    expect: ['[true,true,true]'],
   },
   {
     name: 'headings preserved as text',

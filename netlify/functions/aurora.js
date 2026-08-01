@@ -37,6 +37,25 @@ function decodeEntities(s) {
     .replace(/&hellip;/g, '…');
 }
 
+// Grab the balanced <div>…</div> (or <article>…</article>) region starting at the
+// first match of `openRe`. A lazy `[\s\S]*?<\/div>` would stop at the FIRST nested
+// `</div>`, truncating the article — this counts nesting so we get the real container.
+function grabBalanced(html, openRe) {
+  const open = html.match(openRe);
+  if (!open) return null;
+  const start = open.index + open[0].length;
+  let depth = 1;
+  let i = start;
+  while (i < html.length && depth > 0) {
+    const openIdx = html.indexOf('<div', i);
+    const closeIdx = html.indexOf('</div', i);
+    if (closeIdx === -1) { depth = 0; break; }
+    if (openIdx !== -1 && openIdx < closeIdx) { depth++; i = openIdx + 4; }
+    else { depth--; i = closeIdx + 5; }
+  }
+  return html.slice(start, i);
+}
+
 function stripTags(html) {
   let h = String(html || '');
   // drop script/style/nav/comment noise
@@ -45,11 +64,18 @@ function stripTags(html) {
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<(nav|aside|footer|form|iframe|svg|button|select|input)[\s>][\s\S]*?<\/\1>/gi, ' ');
+    .replace(/<(nav|aside|footer|form|iframe|svg|button|select|input)[\s>][\s\S]*?<\/\1>/gi, ' ')
+    // common boilerplate: infoboxes, navboxes, toc, metadata, jump links, coordinates
+    .replace(/<(table|div|span|ul|ol|li|aside)[^>]*class=["'][^"']*(?:infobox|navbox|toc|mw-editsection|catlinks|noprint|printfooter|metadata|hatnote|dablink|portalbox|coordinates|mw-jump|mw-empty|ambox|sistersitebox|vertical-navbox|plainlinks)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<div[^>]*id=["'][^"']*(?:toc|mw-panel|footer|catlinks|coordinates)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, ' ');
 
-  // prefer the main article body if present
-  const main = h.match(/<article[\s\S]*?<\/article>/i) || h.match(/<main[\s\S]*?<\/main>/i);
-  if (main) h = main[0];
+  // prefer the main article body if present (Wikipedia: #mw-content-text)
+  const main =
+    grabBalanced(h, /<div[^>]*id=["']mw-content-text["'][^>]*>/i) ||
+    h.match(/<article[\s\S]*?<\/article>/i) ||
+    h.match(/<main[\s\S]*?<\/main>/i) ||
+    grabBalanced(h, /<div[^>]*(?:class|itemprop)=["'][^"']*(?:articleBody|post-content|article-content|entry-content|story-body|article-body)[^"']*["'][^>]*>/i);
+  if (main) h = typeof main === 'string' ? main : main[0];
 
   // keep headings & paragraphs, drop everything else
   h = h
@@ -725,6 +751,7 @@ async function newsSearch(cat) {
 
 // exported for unit tests
 exports._stripTags = stripTags;
+exports._grabBalanced = grabBalanced;
 exports._decodeEntities = decodeEntities;
 exports._parseDdgHtml = parseDdgHtml;
 exports._parseRss = parseRss;
