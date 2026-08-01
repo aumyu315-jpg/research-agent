@@ -1009,6 +1009,10 @@ input[type="range"] { flex: 1; accent-color: var(--violet); height: 4px; cursor:
 .listen-btn:hover { color: #fff; background: rgba(34,211,238,.2); border-color: rgba(34,211,238,.5); transform: translateY(-1px); }
 .listen-btn .ic { width: 14px; height: 14px; }
 .listen-btn.playing { color: #fff; background: rgba(34,211,238,.25); box-shadow: 0 0 0 3px rgba(34,211,238,.15); }
+.listen-btn.preparing { color: var(--violet); border-color: rgba(168,85,247,.45); pointer-events: none; }
+.listen-btn.preparing .ic { animation: aurora-spin 1.1s linear infinite; }
+@keyframes aurora-spin { to { transform: rotate(360deg); } }
+.lib-foot-actions { display: inline-flex; align-items: center; gap: 8px; }
 
 .tts-player {
   position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);

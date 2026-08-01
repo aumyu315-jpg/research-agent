@@ -293,7 +293,9 @@ const TTS = (() => {
 
   // Public: append more text to the current queue (full-article narration)
   function append(text) {
-    const chunks = chunkText(String(text || ''));
+    // the neural engine round-trips to the server per chunk — use its larger
+    // chunk size here too so long summaries don't become dozens of tiny calls
+    const chunks = chunkText(String(text || ''), neuralEngine ? NEURAL_CHUNK_MAX : CHUNK_MAX);
     if (!chunks.length) return false;
     if (neuralEngine && narratorEnabled()) {
       neuralQueue.push(...chunks);

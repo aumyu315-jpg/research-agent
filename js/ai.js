@@ -28,11 +28,11 @@ You help users understand any topic in depth — news events, science, history, 
 
   // ── Prompt ──
   function buildPrompt(query, results, fullContent) {
-    const packed = results.slice(0, 20).map((r, i) => {
+    const packed = results.slice(0, 30).map((r, i) => {
       const article = fullContent && fullContent[r.url];
       const body = article
-        ? `    [FULL TEXT READ]\n${article.slice(0, 1500)}`
-        : `    ${(r.snippet || '').slice(0, 200)}`;
+        ? `    [FULL TEXT READ]\n${article.slice(0, 4000)}`
+        : `    ${(r.snippet || '').slice(0, 400)}`;
       return `[${i + 1}] (${r.source}) ${r.title}\n    URL: ${r.url}\n${body}`;
     }).join('\n\n');
     const readNote = fullContent
@@ -64,7 +64,8 @@ You help users understand any topic in depth — news events, science, history, 
 - Write in crisp, professional prose. No fluff, no filler, no marketing tone.
 - Markdown formatting: bold key terms, bullet lists, tables for comparisons.
 - HIGHLIGHT IMPORTANT LINES & DATES: wrap the single most important fact in each section and every key date/year in ==double equals== so they render visually highlighted (e.g., ==July 2026==, ==$120B==, ==53%==). This is critical — the reader scans the highlighted text.
-- Target 600–1000 words. No preamble — start directly with "## Executive Summary".`,
+- Length: target **1200–2000 words** — be comprehensive and thorough. Every section must be substantial (aim for 3–6 sentences per bullet-level point, 2–4 paragraphs per section). Do NOT write a short summary; this is a full intelligence brief.
+- No preamble — start directly with "## Executive Summary".`,
       user: `Today's date: ${today}
 
 Research topic: "${query}"
@@ -165,12 +166,33 @@ Now write the professional research report following your structure exactly.`,
       }
     }
 
-    // GET fallback (plain text) — keep payload small to dodge URL limits & cost gates
+    // GET fallback (plain text) — use a compact system prompt + trimmed user
+    // context so the payload stays under URL limits while keeping quality.
     onProgress(PROGRESS.synthesizing, 0.45);
-    const promptText = `${prompt.system}\n\n${prompt.user}`;
-    const trimmed = promptText.length > 9000 ? promptText.slice(0, 9000) : promptText;
+    const compactSystem = `You are Aurora, an elite professional research analyst. Write a comprehensive executive-grade intelligence brief (1200-2000 words).
+
+# REPORT STRUCTURE (write all sections fully):
+## Executive Summary
+## Key Facts at a Glance (5-10 bullets)
+## Background & Context
+## Current Landscape (cite [n])
+## Detailed Analysis (2-4 subsections)
+## Data Snapshot (table)
+## Perspectives & Criticisms
+## Outlook
+## Sources
+
+# RULES:
+- Cite sources inline like [1], [2] after every factual claim.
+- Never invent data, URLs, names, or statistics.
+- Quantify; be precise about time.
+- HIGHLIGHT key dates & numbers with ==double equals== (e.g. ==$120B==, ==53%==).
+- Be thorough — every section substantial. No preamble.`;
+    const budget = 12000 - compactSystem.length;
+    const userTrim = prompt.user.length > budget ? prompt.user.slice(0, budget) : prompt.user;
+    const promptText = `${compactSystem}\n\n${userTrim}`;
     const res = await fetch(
-      `https://text.pollinations.ai/${encodeURIComponent(trimmed)}?model=openai&json=false`,
+      `https://text.pollinations.ai/${encodeURIComponent(promptText)}?model=openai&json=false`,
       { signal });
     if (!res.ok) throw new Error(`AI service unavailable (${res.status}).`);
     const text = await res.text();
@@ -189,7 +211,7 @@ Now write the professional research report following your structure exactly.`,
     onProgress(PROGRESS.synthesizing, 0.4);
     const body = {
       contents: [{ role: 'user', parts: [{ text: `${prompt.system}\n\n${prompt.user}` }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
     };
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`,
@@ -259,7 +281,7 @@ Now write the professional research report following your structure exactly.`,
           { role: 'user', content: prompt.user },
         ],
         temperature: 0.6,
-        max_tokens: 2400,
+        max_tokens: 8192,
         stream: true,
       }),
       signal,

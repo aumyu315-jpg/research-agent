@@ -3,8 +3,8 @@ const fs = require('fs');
 const fnSrc = fs.readFileSync('netlify/functions/aurora.js', 'utf8');
 // The function uses CommonJS `exports.*` — inject the module globals as params
 const mod = { exports: {} };
-const run = new Function('exports', 'module', 'require', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl, ttsCacheKey: exports._ttsCacheKey };');
-const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl, ttsCacheKey } = run(mod.exports, mod, require);
+const run = new Function('exports', 'module', 'require', fnSrc + '\nreturn { stripTags: exports._stripTags, decodeEntities: exports._decodeEntities, parseDdgHtml: exports._parseDdgHtml, parseRss: exports._parseRss, NEWS_FEEDS: exports._NEWS_FEEDS, NEWS_COUNTRIES: exports._NEWS_COUNTRIES, googleNewsUrl: exports._googleNewsUrl, ttsCacheKey: exports._ttsCacheKey, extractiveSummary: exports._extractiveSummary, buildSummaryPrompt: exports._buildSummaryPrompt };');
+const { stripTags, decodeEntities, parseDdgHtml, parseRss, NEWS_FEEDS, NEWS_COUNTRIES, googleNewsUrl, ttsCacheKey, extractiveSummary, buildSummaryPrompt } = run(mod.exports, mod, require);
 
 const tests = [
   {
@@ -171,6 +171,31 @@ const tests = [
       return [a === b, a !== c, a !== d, a.length === 40].join(',');
     },
     expect: ['true,true,true,true'],
+  },
+  {
+    name: 'extractive summary leads with first sentence and is bounded',
+    fn: () => {
+      const s = extractiveSummary('First sentence with the key fact. Second sentence adds detail. Third sentence continues the story. Fourth wraps it up with a date in 2026.');
+      return JSON.stringify([s.includes('First sentence with the key fact'), s.includes('Fourth wraps it up'), s.length <= 3000]);
+    },
+    expect: ['[true,true,true]'],
+  },
+  {
+    name: 'extractive summary handles tiny/empty text',
+    fn: () => {
+      const a = extractiveSummary('');
+      const b = extractiveSummary('Just one short fragment without punctuation');
+      return JSON.stringify([a === '', b.includes('fragment')]);
+    },
+    expect: ['[true,true]'],
+  },
+  {
+    name: 'summary prompt asks for spoken-word prose, no markdown',
+    fn: () => {
+      const p = buildSummaryPrompt('Test Story', 'https://example.com/story', 'Article body text that is long enough to summarize.');
+      return JSON.stringify([p.includes('NATURAL-SPEAKING'), p.includes('NO markdown'), p.includes('Test Story'), p.includes('Article body text')]);
+    },
+    expect: ['[true,true,true,true]'],
   },
 ];
 

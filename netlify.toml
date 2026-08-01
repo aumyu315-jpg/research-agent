@@ -11,9 +11,10 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Give the web-search chain (SearXNG parallel + DDG fallback) room to finish
+# Give the web-search chain (SearXNG parallel + DDG fallback) + article
+# summarization (scrape + keyless AI) room to finish
 [functions.aurora]
-  timeout = 26
+  timeout = 30
 
 # Route /api/* to the serverless function (static site calls same-origin /api)
 [[redirects]]

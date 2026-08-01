@@ -7,7 +7,8 @@
    ───────────────────────────────────────────── */
 const Content = (() => {
   const ENDPOINT = '/api/content';
-  const MAX_URLS = 8;
+  const SUMMARY_ENDPOINT = '/api/summarize';
+  const MAX_URLS = 12;
   const TIMEOUT = 15000;
 
   async function fetchWithTimeout(url, opts = {}, ms = TIMEOUT) {
@@ -53,5 +54,23 @@ const Content = (() => {
     }
   }
 
-  return { readArticles, isAvailable };
+  // Scrape one article and get an elegant spoken-word summary (server-side AI).
+  // Returns { summary, engine } or null when the article is unreadable/backend down.
+  async function summarizeArticle(url, title) {
+    if (!/^https?:\/\//.test(url || '')) return null;
+    try {
+      const res = await fetchWithTimeout(SUMMARY_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, title: title || '' }),
+      }, 32000); // server function timeout is 30s — fail fast and fall back
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && data.ok && data.summary ? { summary: data.summary, engine: data.engine || 'extractive' } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return { readArticles, summarizeArticle, isAvailable };
 })();

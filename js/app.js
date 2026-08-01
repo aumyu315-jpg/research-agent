@@ -55,6 +55,7 @@
     chatMessages: [],      // [{ role, content }]
     chatBusy: false,
     ttsTrack: null,        // { text, title } — current audio source for voice/rate restart
+    ttsToken: 0,           // increments on every Listen click — guards stale summary appends
   };
 
   const CHAT_SUGGESTS = [
@@ -128,6 +129,8 @@
     $('#srcWeather').checked = !!state.settings.sources.weather;
     $('#contentReader').checked = !!state.settings.contentReader;
     $('#autoRoute').checked = !!state.settings.autoRoute;
+    const statEl = $('#statSources');
+    if (statEl) statEl.textContent = Object.values(state.settings.sources).filter(Boolean).length;
     $('#geminiGroup').hidden = state.settings.provider !== 'gemini';
     $('#groqGroup').hidden = state.settings.provider !== 'groq';
     $('#openrouterGroup').hidden = state.settings.provider !== 'openrouter';
@@ -463,29 +466,83 @@
     state.ttsTrack = null;
   }
 
-  // News story: speak headline + snippet instantly, then append full article text
+  // News story: speak headline instantly, then scrape the FULL article from the
+  // official site and narrate an elegant AI summary of it. Falls back to the full
+  // article text if the summarize backend is unavailable.
   async function listenToNews(story, btn) {
-    const headline = `${story.title || ''}. ${story.snippet || ''}`;
     const title = story.title || 'News story';
-    speakTrack(headline, title);
+    const token = ++state.ttsToken;
+    speakTrack(`${story.title || ''}. ${story.snippet || ''}`, title);
     markListening(btn);
-    // Phase 2: seamlessly append full article text via the serverless reader
+    const url = story.url;
+    if (!url || typeof Content === 'undefined' || state.settings.contentReader === false) return;
+    setPreparing(btn, true);
     try {
-      if (story.url && typeof Content !== 'undefined' && state.settings.contentReader !== false) {
-        const texts = await Content.readArticles([story.url]);
-        const full = texts && texts[story.url];
-        // append when idle (headline already finished) or while this same track plays;
-        // avoid contaminating a different track if the user switched stories mid-fetch
-        if (full && (!TTS.state() || TTS.state().title === title)) TTS.append(` ${full}`);
+      const data = await Content.summarizeArticle(url, title);
+      if (state.ttsToken !== token) { setPreparing(btn, false); return; } // user switched tracks — drop stale summary
+      const text = data && data.summary ? data.summary : null;
+      if (text) {
+        narrateFullStory(text, title, token);
+      } else {
+        const texts = await Content.readArticles([url]);
+        const full = texts && texts[url];
+        if (full && state.ttsToken === token) narrateFullStory(full, title, token);
       }
-    } catch { /* audio stays with headline+snippet */ }
+      setPreparing(btn, false);
+    } catch { setPreparing(btn, false); /* audio stays with headline+snippet */ }
   }
 
-  // Research result: speak title + snippet
-  function listenToResult(r, btn) {
-    const text = `${r.title || ''}. ${r.snippet || ''}`;
-    speakTrack(text, r.title || 'Search result');
+  // Research result: speak title + snippet, then scrape + summarize the article
+  async function listenToResult(r, btn) {
+    const title = r.title || 'Search result';
+    const token = ++state.ttsToken;
+    speakTrack(`${title}. ${r.snippet || ''}`, title);
     markListening(btn);
+    const url = r.url;
+    if (!url || typeof Content === 'undefined' || state.settings.contentReader === false) return;
+    setPreparing(btn, true);
+    try {
+      const data = await Content.summarizeArticle(url, title);
+      if (state.ttsToken !== token) { setPreparing(btn, false); return; } // user switched tracks
+      const text = data && data.summary ? data.summary : null;
+      if (text) {
+        narrateFullStory(text, title, token);
+      } else {
+        const texts = await Content.readArticles([url]);
+        const full = texts && texts[url];
+        if (full && state.ttsToken === token) narrateFullStory(full, title, token);
+      }
+      setPreparing(btn, false);
+    } catch { setPreparing(btn, false); }
+  }
+
+  // Append the full-article summary to the playing track; if the headline already
+  // finished (track ended), narrate the summary as its own track — but never play
+  // a stale summary after the user switched to a different story.
+  function narrateFullStory(text, title, token) {
+    const st = TTS.state();
+    if (st && st.title === title) {
+      TTS.append(` ${text}`);
+    } else if (state.ttsToken === token) {
+      speakTrack(text, `${title} — full story`);
+    }
+  }
+
+  // Toggle a "Preparing…" state on a Listen button while the article is being
+  // scraped + summarized, so the flow never feels unresponsive.
+  function setPreparing(btn, on) {
+    if (!btn) return;
+    if (on) {
+      if (btn.dataset.origHtml == null) btn.dataset.origHtml = btn.innerHTML;
+      btn.classList.add('preparing');
+      btn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>Preparing…';
+    } else {
+      btn.classList.remove('preparing');
+      if (btn.dataset.origHtml != null) {
+        btn.innerHTML = btn.dataset.origHtml;
+        delete btn.dataset.origHtml;
+      }
+    }
   }
 
   // AI report: speak the full markdown (cleaned) — Aurora-authored, no licensing issue
@@ -972,7 +1029,7 @@
     if (state.settings.contentReader && state.results.length && typeof Content !== 'undefined') {
       stepEls[0] && stepEls[0].classList.add('active');
       stepEls[0] && (stepEls[0].lastChild.textContent = 'Reading full articles…');
-      const urls = state.results.map(r => r.url).slice(0, 8);
+      const urls = state.results.map(r => r.url).slice(0, 12);
       fullContent = await Content.readArticles(urls);
       if (fullContent && Object.keys(fullContent).length) {
         const n = Object.keys(fullContent).length;
@@ -1006,7 +1063,8 @@
       $('#reportMeta').innerHTML = `
         <span><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>${UI.esc(providerLabel(provider))}</span>
         <span><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>${UI.fmtDate(Date.now())}</span>
-        <span><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>${UI.esc(state.lastQuery)}</span>`;
+        <span><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>${UI.esc(state.lastQuery)}</span>
+        ${reportStats(markdown)}`;
       if (provider === 'local') {
         UI.toast('AI providers unavailable — generated a smart summary from the sources instead.', 'info', 6000);
       }
@@ -1046,6 +1104,13 @@
 
   function providerLabel(p) {
     return { pollinations: 'Pollinations', gemini: 'Gemini', groq: 'Groq', openrouter: 'OpenRouter', local: 'Auto summary' }[p] || p;
+  }
+
+  // Word count + estimated reading time shown in the report meta
+  function reportStats(md) {
+    const words = (md || '').trim().split(/\s+/).filter(Boolean).length;
+    const mins = Math.max(1, Math.round(words / 200));
+    return `<span><svg class="ic" aria-hidden="true"><use href="#i-briefing"/></svg>${words.toLocaleString()} words · ~${mins} min read</span>`;
   }
 
   async function saveReportToLibrary(markdown, provider) {
@@ -1116,8 +1181,13 @@
         <span class="lib-snippet">${UI.esc(snippet)}</span>
         <div class="lib-foot">
           <span class="lib-sources"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>${r.sourceCount || 0} sources · ${r.provider || 'ai'}</span>
-          <span class="lib-del" data-del="${r.id}" role="button" aria-label="Delete report" title="Delete">
-            <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>
+          <span class="lib-foot-actions">
+            <button class="listen-btn" data-liblisten="${r.id}" title="Listen to report" aria-label="Listen to report">
+              <svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg>Listen
+            </button>
+            <span class="lib-del" data-del="${r.id}" role="button" aria-label="Delete report" title="Delete">
+              <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>
+            </span>
           </span>
         </div>
       </button>`;
@@ -1127,7 +1197,8 @@
       card.addEventListener('click', e => {
         const del = e.target.closest('[data-del]');
         if (del) { e.stopPropagation(); deleteOneReport(del.dataset.del); return; }
-        if (e.target.closest('[data-listen]')) { e.stopPropagation(); return; }
+        const lib = e.target.closest('[data-liblisten]');
+        if (lib) { e.stopPropagation(); listenToLibraryReport(lib.dataset.liblisten); return; }
         openSavedReport(card.dataset.id);
       });
     });
@@ -1142,6 +1213,15 @@
     } catch { UI.toast('Could not delete report', 'err'); }
   }
 
+  // Listen to a saved report straight from the Library (no need to open it first)
+  async function listenToLibraryReport(id) {
+    try {
+      const r = await Storage.getReport(id);
+      if (!r) { UI.toast('Report not found', 'err'); return; }
+      speakTrack(r.markdown, r.title || r.query || 'Saved report');
+    } catch { UI.toast('Could not load report to listen to', 'err'); }
+  }
+
   async function openSavedReport(id) {
     try {
       const r = await Storage.getReport(id);
@@ -1154,7 +1234,8 @@
       $('#reportMeta').innerHTML = `
         <span><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>${UI.fmtDate(r.createdAt)}</span>
         <span><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>${r.provider || 'ai'}</span>
-        <span><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>${UI.esc(r.query || '')}</span>`;
+        <span><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>${UI.esc(r.query || '')}</span>
+        ${reportStats(r.markdown)}`;
       $('#reportBody').innerHTML = Markdown.render(r.markdown);
       $('#reportProgress').hidden = true;
       $('#savedBanner').hidden = true;

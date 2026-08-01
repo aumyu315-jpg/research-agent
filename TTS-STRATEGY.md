@@ -113,8 +113,9 @@
 ## 6. Phased Rollout
 
 - **Phase 1 — Headline summaries (SHIPPED):** Listen button on news cards + search results → speaks headline + snippet locally. Zero keys, zero cost, < 100ms latency. Voice + speed selection, persistent player, full a11y.
-- **Phase 2 — Full article narration (SHIPPED):** After the snippet, seamlessly appends the full article text fetched through the existing `/api/content` backend. Also enables **"Listen to this report"** for AI research reports (fully Aurora-owned content).
+- **Phase 2 — AI-summarized article narration (SHIPPED):** Listen on a news story or result now **scrapes the full article from the publisher's site, writes an elegant spoken-word summary, and narrates that** — a complete briefing instead of raw scraped text. New `POST /api/summarize` endpoint: fetch → extract → keyless Pollinations summary (natural prose, no markdown, 200–350 words) → extractive fallback → 1h cache. The headline plays instantly for feedback, the summary appends seamlessly (or starts its own track if the headline already finished). Also enables **"Listen to this report"** for AI research reports (fully Aurora-owned content) — and Library cards now have their own Listen button.
 - **Phase 3 — Free neural narrator (SHIPPED):** `/api/tts` + `/api/tts/voices` + `/api/tts/status` serverless endpoints using **Microsoft Edge TTS** (`edge-tts-universal`) — keyless, natural neural voices, sha1 audio caching (24h), Settings UI (free voice picker + test), graceful Web Speech fallback whenever the backend is unavailable. Voice engine preference lives in `js/tts.js` (`setNarrator` / `narratorEnabled`).
+- **Phase 4 — Comprehensive AI reports (SHIPPED):** report prompt now targets **1200–2000 words**, feeds up to 30 results (full article text for the top ~12), and raises output caps (Gemini 8192, Groq 8192 tokens) so the Executive Summary → Key Facts → Analysis → Outlook brief is substantial, not a blurb.
 
 ---
 

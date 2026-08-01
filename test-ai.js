@@ -14,7 +14,7 @@ const fakeResults = [
 ];
 
 let pass = 0;
-const TOTAL = 25;
+const TOTAL = 26;
 const check = (name, cond) => { pass += cond ? 1 : 0; console.log(cond ? 'PASS:' : 'FAIL:', name); };
 
 // 1. Prompt builder structure & professionalism
@@ -25,6 +25,7 @@ check('system prompt has Perspectives & Criticisms', prompt.system.includes('## 
 check('system prompt has Outlook', prompt.system.includes('## Outlook'));
 check('system prompt bans invented data', /never invent/i.test(prompt.system));
 check('system prompt requires citations', /cite sources inline/i.test(prompt.system));
+check('system prompt targets a comprehensive report length', /1200–2000 words/.test(prompt.system));
 check('user prompt includes today date', /Today's date: \d{4}-\d{2}-\d{2}/.test(prompt.user));
 check('user prompt includes topic', prompt.user.includes('quantum computing'));
 check('user prompt includes all source types', ['wikipedia', 'hackernews', 'academic', 'books', 'qa', 'code', 'markets', 'weather'].every(s => prompt.user.includes(s)));

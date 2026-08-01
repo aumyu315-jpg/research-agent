@@ -13,9 +13,9 @@ const crypto = require('crypto');
 const { EdgeTTS } = require('edge-tts-universal');
 
 const CACHE_TTL = 10 * 60 * 1000;        // 10 min
-const MAX_RESULTS = 8;
+const MAX_RESULTS = 12;
 const MAX_PAGE_BYTES = 1.5 * 1024 * 1024; // 1.5 MB
-const MAX_TEXT = 8000;                    // chars kept per article
+const MAX_TEXT = 20000;                   // chars kept per article (long articles → richer summaries)
 const FETCH_TIMEOUT = 12000;
 
 const cache = new Map(); // url -> { text, ts }
@@ -304,6 +304,105 @@ async function edgeTts(text, voice, speed) {
   return buf;
 }
 
+// ── Article summarizer (free: keyless Pollinations server-side + extractive fallback) ──
+// Used by the Listen flow: scrape the full article, write an elegant spoken-word
+// summary, then narrate THAT instead of raw scraped text.
+const SUMMARY_CACHE_TTL = 60 * 60 * 1000; // 1h
+const summaryCache = new Map();            // url -> { summary, engine, ts }
+
+function cleanForSummary(text) {
+  return String(text || '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Extractive fallback: lead sentence + following sentences, capped ~450 words
+function extractiveSummary(text, maxWords = 450) {
+  const clean = cleanForSummary(text);
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+  const lead = (sentences[0] || '').trim();
+  if (!lead) return '';
+  const out = [lead];
+  let words = lead.split(/\s+/).length;
+  for (let i = 1; i < sentences.length && words < maxWords; i++) {
+    const s = sentences[i].trim();
+    const n = s.split(/\s+/).length;
+    if (words + n > maxWords) break;
+    out.push(s);
+    words += n;
+  }
+  return out.join(' ').slice(0, 3000);
+}
+
+// Prompt asking for a flowing spoken-word summary (no markdown, no bullets)
+function buildSummaryPrompt(title, url, text) {
+  const trimmed = String(text || '').slice(0, 12000);
+  return `You are Aurora, a skilled news narrator. A user asked to hear about an article. Write a NATURAL-SPEAKING spoken summary of the article that flows beautifully when read aloud.
+
+TITLE: ${title || 'Untitled'}
+URL: ${url}
+
+ARTICLE TEXT:
+"""${trimmed}"""
+
+WRITE (200-350 words, 4-7 short paragraphs):
+- Open with a single compelling sentence: the headline fact or the core "what happened".
+- Then the who/what/where/when/why, the key numbers, and the significance.
+- End with a forward-looking closing line ("what to watch next").
+- Plain conversational prose ONLY. NO markdown, NO bullets, NO "##" headers, NO brackets [1], NO URLs.
+- Never invent facts not in the article; if the article is too short, say so briefly and summarize what's known.
+- Write for the ear, not the eye.`;
+}
+
+async function pollinationsSummary(prompt) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch('https://text.pollinations.ai/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], model: 'openai' }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text);
+      const c = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    } catch { /* plain text body */ }
+    if (text && text.trim()) return text.trim();
+    throw new Error('Empty AI response');
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Scrape + summarize one article (AI first, extractive fallback). Cached 1h.
+async function summarizeArticle(url, title) {
+  const cached = summaryCache.get(url);
+  if (cached && Date.now() - cached.ts < SUMMARY_CACHE_TTL) return cached;
+
+  const text = await fetchArticleText(url); // throws when unreadable
+  let summary = '';
+  let engine = 'extractive';
+  try {
+    const ai = await pollinationsSummary(buildSummaryPrompt(title, url, text));
+    if (ai && ai.length > 120) { summary = ai; engine = 'ai'; }
+  } catch { /* fall through to extractive */ }
+  if (!summary) summary = extractiveSummary(text);
+  if (!summary) throw new Error('No readable content');
+
+  const out = { summary, engine };
+  if (summaryCache.size > 300) {
+    const k = summaryCache.keys().next().value;
+    if (k) summaryCache.delete(k);
+  }
+  summaryCache.set(url, { ...out, ts: Date.now() });
+  return out;
+}
+
 // ── handler ──
 exports.handler = async (event) => {
   const headers = {
@@ -382,6 +481,20 @@ exports.handler = async (event) => {
       }
       ttsCache.set(hash, { audio, ts: Date.now() });
       return { statusCode: 200, headers: audioHeaders, isBase64Encoded: true, body: audio.toString('base64') };
+    }
+
+    // article summary for narration (scrape -> elegant AI summary -> read aloud)
+    if (event.httpMethod === 'POST' && url.pathname.endsWith('/summarize')) {
+      const body = JSON.parse(event.body || '{}');
+      const target = String(body.url || '').trim();
+      const title = String(body.title || '').trim();
+      if (!/^https?:\/\//.test(target)) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing url' }) };
+      try {
+        const out = await summarizeArticle(target, title);
+        return { statusCode: 200, headers, body: JSON.stringify({ ok: true, ...out, url: target }) };
+      } catch (e) {
+        return { statusCode: 422, headers, body: JSON.stringify({ ok: false, error: e.message }) };
+      }
     }
 
     // content extraction
@@ -622,3 +735,5 @@ exports._ttsCacheKey = ttsCacheKey;
 exports._edgeTts = edgeTts;
 exports._edgeRate = edgeRate;
 exports._EDGE_VOICES = EDGE_VOICES;
+exports._extractiveSummary = extractiveSummary;
+exports._buildSummaryPrompt = buildSummaryPrompt;
