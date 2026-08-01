@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "@netlify/functions": "^2.8.0"
+  },
+  "dependencies": {
+    "edge-tts-universal": "^1.4.0"
   }
 }

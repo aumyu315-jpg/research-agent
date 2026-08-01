@@ -26,10 +26,10 @@ check('short text stays in one chunk', TTS.chunkText('Just a short phrase.', 60)
 check('empty text returns no chunks', TTS.chunkText('   ').length === 0);
 check('chunks end on sentence punctuation', chunks.every(c => /[.!?]$/.test(c.trim())));
 
-// 3. Narrator config (Phase 3)
+// 3. Narrator config (free neural narrator)
 check('narrator disabled by default', TTS.narratorEnabled() === false);
-check('narrator disabled without voice id', (() => { TTS.setNarrator({ key: 'sk-test', voiceId: '' }); return TTS.narratorEnabled() === false && TTS.narratorConfig().key === 'sk-test'; })());
-check('setNarrator stores key/voice/model', (() => { TTS.setNarrator({ key: 'sk-test', voiceId: 'abc123', model: 'eleven_turbo_v2_5' }); const c = TTS.narratorConfig(); return c.voiceId === 'abc123' && c.model === 'eleven_turbo_v2_5'; })());
+check('narrator disabled without voice', (() => { TTS.setNarrator({ voice: '' }); return TTS.narratorEnabled() === false && TTS.narratorConfig().voice === ''; })());
+check('setNarrator stores voice', (() => { TTS.setNarrator({ voice: 'en-US-AriaNeural' }); const c = TTS.narratorConfig(); return c.voice === 'en-US-AriaNeural'; })());
 check('neural chunking uses larger max and keeps content', (() => {
   const big = 'Sentence one here. Sentence two over there. Sentence three is a little longer to push past the 200-char default boundary. ' +
     'Sentence four continues on. Sentence five wraps up this chunk nicely and keeps everything intact.';

@@ -1,7 +1,7 @@
 /* ─────────────────────────────────────────────
    Aurora — service worker (offline app shell)
    ───────────────────────────────────────────── */
-const CACHE = 'aurora-v3';
+const CACHE = 'aurora-v4';
 const SHELL = [
   './',
   './index.html',
@@ -15,7 +15,6 @@ const SHELL = [
   './js/fx.js',
   './js/tts.js',
   './js/app.js',
-  './assets/narrator-voice.m4a',
   './manifest.webmanifest',
 ];
 

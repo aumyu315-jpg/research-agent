@@ -504,22 +504,18 @@
         </section>
 
         <section class="set-group">
-          <h4>Narrator voice <span class="pill-key">optional · ElevenLabs</span></h4>
-          <p class="set-hint">Aurora reads news &amp; reports aloud in a <b>cloned narrator voice</b> cloned from the bundled sample — needs a free <a href="https://elevenlabs.io" target="_blank" rel="noopener">ElevenLabs</a> API key (10K chars/month). Without a key, Aurora uses your browser's voices for free.</p>
-          <input type="password" class="input" id="elevenKey" placeholder="ElevenLabs API key (sk_…)" autocomplete="off" />
+          <h4>Narrator voice <span class="pill-free">Free · no key</span></h4>
+          <p class="set-hint">Aurora reads news &amp; reports aloud with a <b>natural neural voice</b> — powered by Microsoft Edge TTS, completely free with no API key. Pick a voice, then hit <b>Test voice</b>.</p>
           <div class="set-row">
-            <label class="set-label" for="narratorModel">Model</label>
-            <input type="text" class="input" id="narratorModel" placeholder="eleven_turbo_v2_5" />
+            <label class="set-label" for="narratorVoice">Voice</label>
+            <select class="select" id="narratorVoice"></select>
           </div>
           <div class="set-row narrator-row">
-            <button class="btn btn-ghost" id="cloneVoiceBtn">
-              <svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg> Clone narrator
-            </button>
             <button class="btn btn-ghost" id="testNarratorBtn">
               <svg class="ic" aria-hidden="true"><use href="#i-play"/></svg> Test voice
             </button>
           </div>
-          <p class="set-hint" id="narratorStatus">Narrator: not configured — using browser voices.</p>
+          <p class="set-hint" id="narratorStatus">Narrator: loading free voices…</p>
         </section>
 
         <section class="set-group">
@@ -549,7 +545,7 @@
     </div>      <div class="tts-info">
         <span class="tts-now" id="ttsNow">Now listening</span>
         <span class="tts-title" id="ttsTitle" aria-live="polite"></span>
-        <span class="tts-note">Audio generated in your browser · not affiliated with publishers</span>
+        <span class="tts-note">Free neural narration (Edge TTS) · not affiliated with publishers</span>
       </div>
     <div class="tts-controls">
       <button class="icon-btn" id="ttsPauseBtn" aria-label="Pause" title="Pause">

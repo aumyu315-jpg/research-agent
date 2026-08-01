@@ -13,9 +13,7 @@
     openrouterKey: '',
     openrouterModel: 'meta-llama/llama-3.3-70b-instruct:free',
     newsKey: '',
-    elevenKey: '',                 // ElevenLabs key — enables the cloned narrator voice
-    narratorModel: 'eleven_turbo_v2_5',
-    narratorVoiceId: '',           // cloned voice id (created via /api/tts/voice)
+    narratorVoice: 'en-US-EmmaMultilingualNeural',  // free neural narrator voice (Edge TTS)
     perSource: 8,
     contentReader: true,           // fetch full article text via serverless backend
     autoRoute: true,               // detect query type & prioritize matching sources
@@ -57,7 +55,6 @@
     chatMessages: [],      // [{ role, content }]
     chatBusy: false,
     ttsTrack: null,        // { text, title } — current audio source for voice/rate restart
-    narratorBusy: false,   // voice cloning in progress
   };
 
   const CHAT_SUGGESTS = [
@@ -116,8 +113,7 @@
     $('#openrouterKey').value = state.settings.openrouterKey || '';
     $('#openrouterModel').value = state.settings.openrouterModel || 'meta-llama/llama-3.3-70b-instruct:free';
     $('#newsKey').value = state.settings.newsKey || '';
-    $('#elevenKey').value = state.settings.elevenKey || '';
-    $('#narratorModel').value = state.settings.narratorModel || 'eleven_turbo_v2_5';
+    $('#narratorVoice').value = state.settings.narratorVoice || 'en-US-EmmaMultilingualNeural';
     $('#perSource').value = state.settings.perSource;
     $('#perSourceVal').textContent = state.settings.perSource;
     $('#srcWikipedia').checked = !!state.settings.sources.wikipedia;
@@ -194,17 +190,11 @@
     $('#openrouterKey').addEventListener('change', e => { state.settings.openrouterKey = e.target.value.trim(); saveSettings(); });
     $('#openrouterModel').addEventListener('change', e => { state.settings.openrouterModel = e.target.value; saveSettings(); });
     $('#newsKey').addEventListener('change', e => { state.settings.newsKey = e.target.value.trim(); saveSettings(); });
-    $('#elevenKey').addEventListener('change', e => {
-      state.settings.elevenKey = e.target.value.trim();
+    $('#narratorVoice').addEventListener('change', e => {
+      state.settings.narratorVoice = e.target.value || 'en-US-EmmaMultilingualNeural';
       saveSettings();
       syncNarrator();
     });
-    $('#narratorModel').addEventListener('change', e => {
-      state.settings.narratorModel = e.target.value.trim() || 'eleven_turbo_v2_5';
-      saveSettings();
-      syncNarrator();
-    });
-    $('#cloneVoiceBtn').addEventListener('click', cloneNarratorVoice);
     $('#testNarratorBtn').addEventListener('click', testNarrator);
     $('#perSource').addEventListener('input', e => {
       $('#perSourceVal').textContent = e.target.value;
@@ -325,71 +315,73 @@
 
   // ═══════════ TEXT-TO-SPEECH ═══════════
   function initTts() {
-    if (!TTS.supported() && !state.settings.elevenKey) return;
     TTS.init();
     const rate = TTS.getSettings().rate || 1;
     $('#ttsRate').value = String(rate);
     populateTtsVoices();
+    populateNarratorVoices();
     syncNarrator();
+  }
+
+  // Free neural narrator voices (Microsoft Edge TTS via /api/tts/voices) — no keys
+  async function populateNarratorVoices() {
+    const sel = $('#narratorVoice');
+    if (!sel) return;
+    const fallback = [
+      ['en-US-EmmaMultilingualNeural', 'Emma — US (multilingual)'],
+      ['en-US-AriaNeural', 'Aria — US'],
+      ['en-US-ChristopherNeural', 'Christopher — US'],
+      ['en-US-GuyNeural', 'Guy — US'],
+      ['en-US-JennyNeural', 'Jenny — US'],
+      ['en-GB-SoniaNeural', 'Sonia — UK'],
+      ['en-GB-RyanNeural', 'Ryan — UK'],
+      ['en-IN-NeerjaNeural', 'Neerja — India'],
+      ['en-IN-PrabhatNeural', 'Prabhat — India'],
+      ['en-AU-NatashaNeural', 'Natasha — Australia'],
+    ];
+    let list = fallback;
+    try {
+      const res = await fetch('/api/tts/voices');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.voices) && data.voices.length) {
+          list = data.voices.map(v => [v.id, v.name]);
+        }
+      }
+    } catch { /* fallback list */ }
+    const saved = state.settings.narratorVoice || 'en-US-EmmaMultilingualNeural';
+    sel.innerHTML = list.map(([id, name]) =>
+      `<option value="${UI.esc(id)}" ${id === saved ? 'selected' : ''}>${UI.esc(name)}</option>`).join('');
+    if (saved && !list.some(([id]) => id === saved)) {
+      sel.value = 'en-US-EmmaMultilingualNeural';
+      state.settings.narratorVoice = 'en-US-EmmaMultilingualNeural';
+      saveSettings();
+      syncNarrator();
+    }
   }
 
   // Pass the narrator config to the TTS engine + refresh the settings status line
   function syncNarrator() {
     if (typeof TTS === 'undefined') return;
     TTS.setNarrator({
-      key: state.settings.elevenKey || '',
-      voiceId: state.settings.narratorVoiceId || '',
-      model: state.settings.narratorModel || 'eleven_turbo_v2_5',
+      voice: state.settings.narratorVoice || 'en-US-EmmaMultilingualNeural',
     });
     refreshNarratorStatus();
   }
 
-  // Status hint in Settings: narrator ready / needs key / needs clone / browser voices
-  function refreshNarratorStatus() {
+  // Status hint in Settings: free neural narrator is ready by default
+  async function refreshNarratorStatus() {
     const el = $('#narratorStatus');
     if (!el || typeof TTS === 'undefined') return;
-    const hasKey = !!state.settings.elevenKey;
-    const hasVoice = !!state.settings.narratorVoiceId;
-    if (!hasKey) {
-      el.textContent = 'Narrator: add an ElevenLabs key to clone the bundled narrator voice — otherwise Aurora uses your browser\'s voices (free).';
-      return;
-    }
-    if (!hasVoice) {
-      el.textContent = 'Narrator: key set ✓ — click “Clone narrator” once to create your voice (server needs ELEVENLABS_API_KEY set on Netlify for the actual cloning).';
-      return;
-    }
-    el.textContent = 'Narrator: ready ✓ — Aurora reads news & reports in your cloned voice. Click “Test voice” to hear it.';
-  }
-
-  // Clone the bundled narrator sample (assets/narrator-voice.m4a) via /api/tts/voice
-  async function cloneNarratorVoice() {
-    const key = (state.settings.elevenKey || '').trim();
-    if (!key) { UI.toast('Add your ElevenLabs API key first (Settings → Narrator voice).', 'info', 4500); return; }
-    if (state.narratorBusy) return;
-    state.narratorBusy = true;
-    UI.setLoading($('#cloneVoiceBtn'), true, 'Cloning…');
+    // verify the deployed backend actually serves /api/tts (free Edge TTS narrator)
+    let backend = false;
     try {
-      const res = await fetch('assets/narrator-voice.m4a');
-      if (!res.ok) throw new Error('Could not load the narrator sample');
-      const buf = await res.arrayBuffer();
-      const base64 = arrayBufferToBase64(buf);
-      const resp = await fetch('/api/tts/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'Aurora Narrator', audio: base64, mime: 'audio/mp4' }),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || !data.voice_id) throw new Error((data.error || 'Cloning failed — is the backend deployed?'));
-      state.settings.narratorVoiceId = data.voice_id;
-      saveSettings();
-      syncNarrator();
-      UI.toast('Narrator voice cloned ✓', 'ok', 4000);
-    } catch (e) {
-      UI.toast(e.message || 'Voice cloning failed.', 'err', 5000);
-    } finally {
-      state.narratorBusy = false;
-      UI.setLoading($('#cloneVoiceBtn'), false);
-    }
+      const res = await fetch('/api/tts/status', { method: 'GET' });
+      if (res.ok) backend = (await res.json()).configured !== false;
+    } catch { /* backend unreachable */ }
+    el.textContent = (TTS.narratorEnabled() && backend)
+      ? 'Narrator: free neural voice ✓ — Aurora reads news & reports aloud. Click “Test voice” to hear it.'
+      : 'Narrator: using your browser\'s free voices (Edge TTS needs the deployed backend for the neural narrator).';
   }
 
   // Speak a short sample so users can compare narrator vs browser voice
@@ -399,16 +391,6 @@
     const ok = TTS.speak(sample, { title: 'Narrator test' });
     if (!ok) UI.toast('Nothing to play — TTS unavailable in this browser.', 'info');
     showTtsPlayer('Narrator test');
-  }
-
-  function arrayBufferToBase64(buf) {
-    let bin = '';
-    const bytes = new Uint8Array(buf);
-    const CHUNK = 0x8000;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(bin);
   }
 
   function populateTtsVoices() {
@@ -432,11 +414,11 @@
     const isNarrator = typeof TTS !== 'undefined' && TTS.narratorEnabled();
     const now = $('#ttsNow');
     if (now) now.textContent = isNarrator ? 'Narrator' : 'Now listening';
-    // voice dropdown is meaningless while the cloned narrator is active
+    // the browser-voice dropdown is meaningless while the free neural narrator is active
     const voiceSel = $('#ttsVoice');
     if (voiceSel) {
       voiceSel.disabled = isNarrator;
-      voiceSel.title = isNarrator ? 'The cloned narrator voice is used while active' : '';
+      voiceSel.title = isNarrator ? 'The free neural narrator voice is used while active — pick another in Settings' : '';
     }
   }
 

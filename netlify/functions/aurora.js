@@ -3,13 +3,14 @@
    Endpoints (deployed at /api/*):
      POST /api/content   { urls: [...] } -> { ok, results: { url: text|null } }
      GET  /api/search?q=  (optional, needs BRAVE_API_KEY)
-     POST /api/tts        { text, voice_id, model } -> audio/mpeg (ElevenLabs narrator)
-     POST /api/tts/voice  { name, audio(base64), mime } -> { voice_id }
+     POST /api/tts        { text, voice, speed } -> audio/mpeg (free Edge TTS narrator)
+     GET  /api/tts/voices -> { voices: [...] } (free neural voices, no key)
      GET  /api/tts/status -> { ok, configured }
      GET  /api/health
    CORS-enabled so the static site can call it.
    ───────────────────────────────────────────── */
 const crypto = require('crypto');
+const { EdgeTTS } = require('edge-tts-universal');
 
 const CACHE_TTL = 10 * 60 * 1000;        // 10 min
 const MAX_RESULTS = 8;
@@ -255,76 +256,52 @@ async function webSearch(q) {
   return { items, engine: 'duckduckgo' };
 }
 
-// ── TTS narrator (ElevenLabs, optional ELEVENLABS_API_KEY) ──
+// ── TTS narrator (free: Microsoft Edge TTS — no key, no cost) ──
+// Uses the same natural neural voices as Edge's Read Aloud, via
+// edge-tts-universal. Keyless & free; audio cached server-side for 24h.
 const TTS_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day — audio is expensive, cache long
-const ttsCache = new Map(); // sha1(voice:model:text) -> { audio: Buffer, ts }
-const TTS_DEFAULT_MODEL = 'eleven_turbo_v2_5';
+const ttsCache = new Map(); // sha1(voice:rate:text) -> { audio: Buffer, ts }
+const TTS_DEFAULT_VOICE = 'en-US-EmmaMultilingualNeural';
+
+// Curated free Edge neural voices (id = Edge voice name)
+const EDGE_VOICES = [
+  { id: 'en-US-EmmaMultilingualNeural', name: 'Emma — US (multilingual)', lang: 'en-US' },
+  { id: 'en-US-AriaNeural', name: 'Aria — US', lang: 'en-US' },
+  { id: 'en-US-ChristopherNeural', name: 'Christopher — US', lang: 'en-US' },
+  { id: 'en-US-GuyNeural', name: 'Guy — US', lang: 'en-US' },
+  { id: 'en-US-JennyNeural', name: 'Jenny — US', lang: 'en-US' },
+  { id: 'en-US-MichelleNeural', name: 'Michelle — US', lang: 'en-US' },
+  { id: 'en-GB-SoniaNeural', name: 'Sonia — UK', lang: 'en-GB' },
+  { id: 'en-GB-RyanNeural', name: 'Ryan — UK', lang: 'en-GB' },
+  { id: 'en-IN-NeerjaNeural', name: 'Neerja — India', lang: 'en-IN' },
+  { id: 'en-IN-PrabhatNeural', name: 'Prabhat — India', lang: 'en-IN' },
+  { id: 'en-AU-NatashaNeural', name: 'Natasha — Australia', lang: 'en-AU' },
+  { id: 'en-CA-ClaraNeural', name: 'Clara — Canada', lang: 'en-CA' },
+  { id: 'de-DE-KatjaNeural', name: 'Katja — Germany', lang: 'de-DE' },
+  { id: 'fr-FR-DeniseNeural', name: 'Denise — France', lang: 'fr-FR' },
+  { id: 'es-ES-ElviraNeural', name: 'Elvira — Spain', lang: 'es-ES' },
+  { id: 'hi-IN-SwaraNeural', name: 'Swara — Hindi', lang: 'hi-IN' },
+];
 
 // Deterministic cache key (exported for tests)
-function ttsCacheKey(voiceId, text, model) {
-  return crypto.createHash('sha1').update(`${voiceId}:${model || TTS_DEFAULT_MODEL}:${text}`).digest('hex');
+function ttsCacheKey(voice, text, variant) {
+  return crypto.createHash('sha1').update(`${voice}:${variant || '1'}:${text}`).digest('hex');
 }
 
-async function elevenTts(text, voiceId, model, speed) {
-  const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) throw new Error('ELEVENLABS_API_KEY not configured');
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 25000);
-  try {
-    const res = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
-      {
-        method: 'POST',
-        headers: { 'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-        body: JSON.stringify({
-          text: String(text || '').slice(0, 5000),
-          model_id: model || process.env.ELEVENLABS_MODEL || TTS_DEFAULT_MODEL,
-          voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.8,
-            ...(speed ? { speed: Math.min(Math.max(speed, 0.5), 2) } : {}),
-          },
-        }),
-        signal: ctrl.signal,
-      });
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      throw new Error(`ElevenLabs TTS ${res.status}: ${err.slice(0, 160)}`);
-    }
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (!buf.length) throw new Error('ElevenLabs returned empty audio');
-    return buf;
-  } finally {
-    clearTimeout(t);
-  }
+// Map player speed (0.5–2) to an Edge rate string ('+0%', '+25%', '-10%', …)
+function edgeRate(speed) {
+  const s = Math.min(Math.max(Number(speed) || 1, 0.5), 2);
+  const pct = Math.round((s - 1) * 100);
+  return `${pct >= 0 ? '+' : ''}${pct}%`;
 }
 
-// Instant voice clone from a base64 audio sample (e.g. assets/narrator-voice.m4a)
-async function elevenAddVoice(name, audioB64, mime) {
-  const key = process.env.ELEVENLABS_API_KEY;
-  if (!key) throw new Error('ELEVENLABS_API_KEY not configured');
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 30000);
-  try {
-    const form = new FormData();
-    form.append('name', String(name || 'Aurora Narrator').slice(0, 60));
-    form.append('files', new Blob([Buffer.from(audioB64, 'base64')], { type: mime || 'audio/mp4' }), 'voice.m4a');
-    const res = await fetch('https://api.elevenlabs.io/v1/voices/add', {
-      method: 'POST',
-      headers: { 'xi-api-key': key },
-      body: form,
-      signal: ctrl.signal,
-    });
-    if (!res.ok) {
-      const err = await res.text().catch(() => '');
-      throw new Error(`ElevenLabs voice add ${res.status}: ${err.slice(0, 160)}`);
-    }
-    const data = await res.json();
-    if (!data.voice_id) throw new Error('No voice_id returned');
-    return data.voice_id;
-  } finally {
-    clearTimeout(t);
-  }
+// Free neural synthesis via Microsoft Edge TTS (no API key required)
+async function edgeTts(text, voice, speed) {
+  const t = new EdgeTTS(String(text || '').slice(0, 5000), voice || TTS_DEFAULT_VOICE, { rate: edgeRate(speed) });
+  const result = await t.synthesize();
+  const buf = Buffer.from(await result.audio.arrayBuffer());
+  if (!buf.length) throw new Error('Edge TTS returned empty audio');
+  return buf;
 }
 
 // ── handler ──
@@ -372,41 +349,33 @@ exports.handler = async (event) => {
       return { statusCode: 200, headers, body: JSON.stringify({ ok: true, category: cat, results: items, engine: 'rss' }) };
     }
 
-    // narrator voice cloning (multipart audio -> ElevenLabs -> voice_id)
-    if (event.httpMethod === 'POST' && url.pathname.endsWith('/tts/voice')) {
-      const body = JSON.parse(event.body || '{}');
-      const audio = String(body.audio || '');
-      if (!audio) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing audio (base64)' }) };
-      if (audio.length > 4 * 1024 * 1024) {
-        return { statusCode: 413, headers, body: JSON.stringify({ ok: false, error: 'audio too large (max ~3 MB)' }) };
-      }
-      const voiceId = await elevenAddVoice(String(body.name || 'Aurora Narrator').slice(0, 60), audio, body.mime || 'audio/mp4');
-      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, voice_id: voiceId }) };
+    // free narrator voice list (Edge TTS — no key needed)
+    if (event.httpMethod === 'GET' && url.pathname.endsWith('/tts/voices')) {
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, engine: 'edge-tts', voices: EDGE_VOICES }) };
     }
 
-    // narrator status (key configured?)
+    // narrator status — always configured (free, no key required)
     if (event.httpMethod === 'GET' && url.pathname.endsWith('/tts/status')) {
-      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, configured: !!process.env.ELEVENLABS_API_KEY }) };
+      return { statusCode: 200, headers, body: JSON.stringify({ ok: true, configured: true, engine: 'edge-tts', default_voice: TTS_DEFAULT_VOICE }) };
     }
 
-    // neural narration (cached audio bytes)
+    // neural narration (free Edge TTS, cached audio bytes)
     if (event.httpMethod === 'POST' && url.pathname.endsWith('/tts')) {
       const body = JSON.parse(event.body || '{}');
       const text = String(body.text || '').trim();
-      const voiceId = String(body.voice_id || '').trim();
-      const model = String(body.model || '').trim();
+      const voice = String(body.voice || '').trim();
       const speed = Math.min(Math.max(Number(body.speed) || 1, 0.5), 2); // honor player speed
       if (!text) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing text' }) };
-      if (!voiceId) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing voice_id' }) };
+      if (!voice) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing voice' }) };
 
-      const hash = ttsCacheKey(voiceId, text, model + '|' + speed);
+      const hash = ttsCacheKey(voice, text, String(speed));
       // audio bytes are cached server-side for 24h, so a short browser cache is fine (and cheaper)
       const audioHeaders = { ...headers, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=3600' };
       const hit = ttsCache.get(hash);
       if (hit && Date.now() - hit.ts < TTS_CACHE_TTL) {
         return { statusCode: 200, headers: audioHeaders, isBase64Encoded: true, body: hit.audio.toString('base64') };
       }
-      const audio = await elevenTts(text, voiceId, model, speed);
+      const audio = await edgeTts(text, voice, speed);
       if (ttsCache.size > 200) {
         const oldest = ttsCache.keys().next().value;
         if (oldest) ttsCache.delete(oldest);
@@ -650,5 +619,6 @@ exports._NEWS_FEEDS = NEWS_FEEDS;
 exports._NEWS_COUNTRIES = NEWS_COUNTRIES;
 exports._googleNewsUrl = googleNewsUrl;
 exports._ttsCacheKey = ttsCacheKey;
-exports._elevenTts = elevenTts;
-exports._elevenAddVoice = elevenAddVoice;
+exports._edgeTts = edgeTts;
+exports._edgeRate = edgeRate;
+exports._EDGE_VOICES = EDGE_VOICES;

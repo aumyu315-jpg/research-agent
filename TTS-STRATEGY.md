@@ -10,7 +10,8 @@
 | Option | Voice quality | Languages | Free tier | Paid (per 1M chars) | Rate limits | Latency | Verdict |
 |---|---|---|---|---|---|---|---|
 | **Web Speech API** (`speechSynthesis`) | Good — OS/browser dependent (Google voices on Chrome, Apple voices on Safari, robotic on some Linux) | Matches OS voices (~40–200 voices) | **100% free, zero keys, zero infra** | — | None (local) | **Near-zero (local)** | ✅ **Phase 1 & 2 engine — implemented now** |
-| **Google Cloud TTS** (Neural2/WaveNet) | Excellent — natural prosody | 75+ langs, 380+ voices | **1M chars/mo** (Neural2/WaveNet) | $16 (neural) / $4 (standard) | generous, adjustable quotas | ~300–800ms | ⚪ Phase 3 (keyed, optional) |
+| **Microsoft Edge TTS** (`edge-tts-universal`) | Excellent — natural neural voices | 100+ langs | **100% free, keyless** (Edge Read Aloud backend) | — | generous | ~300–1000ms | ✅ **Phase 3 narrator — implemented now** |
+| **Google Cloud TTS** (Neural2/WaveNet) | Excellent — natural prosody | 75+ langs, 380+ voices | **1M chars/mo** (Neural2/WaveNet) | $16 (neural) / $4 (standard) | generous, adjustable quotas | ~300–800ms | ⚪ Optional (keyed) |
 | **Amazon Polly** | Very good (neural) | 30+ langs | **1M neural chars/mo** (12 mo trial), 5M standard | $16 (neural) / $4 (standard) | 1 concurrent on free tier | ~400–900ms | ⚪ Phase 3 (keyed, optional) |
 | **Microsoft Azure Speech** | Excellent | 100+ langs | **0.5M chars/mo** (F0, permanent) | ~$16 neural | 1 concurrent (F0) | ~300–700ms | ⚪ Phase 3 (keyed, optional) |
 | **ElevenLabs** | State-of-the-art | 29+ langs | ~10K credits (~10 min) / mo | high | strict | ~500–1200ms | ❌ free tier too small for news |
@@ -113,16 +114,15 @@
 
 - **Phase 1 — Headline summaries (SHIPPED):** Listen button on news cards + search results → speaks headline + snippet locally. Zero keys, zero cost, < 100ms latency. Voice + speed selection, persistent player, full a11y.
 - **Phase 2 — Full article narration (SHIPPED):** After the snippet, seamlessly appends the full article text fetched through the existing `/api/content` backend. Also enables **"Listen to this report"** for AI research reports (fully Aurora-owned content).
-- **Phase 3 — Cloned narrator voice (SHIPPED):** `/api/tts` + `/api/tts/voice` serverless endpoints (ElevenLabs), instant voice cloning of the bundled `assets/narrator-voice.m4a` sample, sha1 audio caching (24h), Settings UI (key + clone + test), graceful Web Speech fallback whenever no key is set or the backend is unavailable. Voice engine preference lives in `js/tts.js` (`setNarrator` / `narratorEnabled`).
+- **Phase 3 — Free neural narrator (SHIPPED):** `/api/tts` + `/api/tts/voices` + `/api/tts/status` serverless endpoints using **Microsoft Edge TTS** (`edge-tts-universal`) — keyless, natural neural voices, sha1 audio caching (24h), Settings UI (free voice picker + test), graceful Web Speech fallback whenever the backend is unavailable. Voice engine preference lives in `js/tts.js` (`setNarrator` / `narratorEnabled`).
 
 ---
 
 ## 7. Files Touched (this change)
-- `js/tts.js` — engine: Web Speech (voices, chunking, queue) + neural narrator (`/api/tts`, pause/resume/cancel, fallback).
+- `js/tts.js` — engine: Web Speech (voices, chunking, queue) + free neural narrator (`/api/tts`, pause/resume/cancel, fallback).
 - `index.html` — sprite icons, listen buttons, player bar, report listen, narrator settings group, FX canvas.
 - `css/styles.css` — player bar, listen buttons, equalizer, narrator settings, futuristic glass hero stage.
-- `js/app.js` — wiring: cards, results, report, player controls, narrator clone/test, FX init.
-- `netlify/functions/aurora.js` — `/api/tts`, `/api/tts/voice`, `/api/tts/status` (ElevenLabs, cached).
+- `js/app.js` — wiring: cards, results, report, player controls, narrator voice picker/test, FX init.
+- `netlify/functions/aurora.js` — `/api/tts`, `/api/tts/voices`, `/api/tts/status` (Edge TTS, keyless, cached) + `edge-tts-universal` dep.
 - `js/fx.js` (new) — ambient constellation canvas background.
-- `assets/narrator-voice.m4a` (new) — bundled narrator voice sample.
 - `sw.js`, `README.md`, `package.json`, `test-tts.js`, `test-content.js` — cache, docs, tests.

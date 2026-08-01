@@ -164,10 +164,10 @@ const tests = [
   {
     name: 'tts cache key is deterministic and stable',
     fn: () => {
-      const a = ttsCacheKey('voiceA', 'hello world', 'eleven_turbo_v2_5');
-      const b = ttsCacheKey('voiceA', 'hello world', 'eleven_turbo_v2_5');
-      const c = ttsCacheKey('voiceB', 'hello world', 'eleven_turbo_v2_5');
-      const d = ttsCacheKey('voiceA', 'hello world', 'eleven_multilingual_v2');
+      const a = ttsCacheKey('voiceA', 'hello world', '1');
+      const b = ttsCacheKey('voiceA', 'hello world', '1');
+      const c = ttsCacheKey('voiceB', 'hello world', '1');
+      const d = ttsCacheKey('voiceA', 'hello world', '1.5');
       return [a === b, a !== c, a !== d, a.length === 40].join(',');
     },
     expect: ['true,true,true,true'],

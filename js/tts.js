@@ -1,9 +1,9 @@
 /* ─────────────────────────────────────────────
    Aurora — Text-to-Speech engine
    Two engines, one queue:
-     • Neural Narrator (Phase 3) — ElevenLabs instant-cloned voice via /api/tts
-       (serverless synthesis, sha1 audio cache). Used when a narrator voice is
-       configured; falls back seamlessly to the Web Speech engine on any failure.
+     • Neural Narrator (free) — Microsoft Edge TTS natural neural voice via
+       /api/tts (keyless serverless synthesis, sha1 audio cache). Used when a
+       narrator voice is chosen; falls back seamlessly to Web Speech on any failure.
      • Web Speech API — zero keys, zero cost, zero latency (local).
    ───────────────────────────────────────────── */
 const TTS = (() => {
@@ -13,8 +13,8 @@ const TTS = (() => {
 
   let settings = { voice: '', rate: 1, pitch: 1 };
 
-  // ── narrator (ElevenLabs via serverless /api/tts) ──
-  let narrator = { key: '', voiceId: '', model: 'eleven_turbo_v2_5' };
+  // ── narrator (free neural voice via serverless /api/tts — Edge TTS) ──
+  let narrator = { voice: '' };
   let neuralQueue = [];        // text chunks pending neural synthesis
   let neuralSynth = false;     // pump loop running
   let neuralPaused = false;
@@ -143,9 +143,9 @@ const TTS = (() => {
     return narrator;
   }
   function narratorConfig() { return { ...narrator }; }
-  // Narrator is usable only when we have both a key (client-side flag) and a cloned voice id
+  // Narrator is usable when a free neural voice is chosen and the browser can fetch audio
   function narratorEnabled() {
-    return !!(narrator.key && narrator.voiceId && browserFetchAvailable());
+    return !!(narrator.voice && browserFetchAvailable());
   }
 
   // ── Web Speech engine ──
@@ -185,7 +185,7 @@ const TTS = (() => {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice_id: narrator.voiceId, model: narrator.model, speed: settings.rate || 1 }),
+        body: JSON.stringify({ text, voice: narrator.voice, speed: settings.rate || 1 }),
         signal: synthCtrl.signal,
       });
       if (!res.ok) throw new Error(`TTS ${res.status}`);
