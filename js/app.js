@@ -486,7 +486,8 @@
       } else {
         const texts = await Content.readArticles([url]);
         const full = texts && texts[url];
-        if (full && state.ttsToken === token) narrateFullStory(full, title, token);
+        // cap the raw fallback so a long article doesn't become a wall of text
+        if (full && state.ttsToken === token) narrateFullStory(full.slice(0, 4000), title, token);
       }
       setPreparing(btn, false);
     } catch { setPreparing(btn, false); /* audio stays with headline+snippet */ }
@@ -510,7 +511,8 @@
       } else {
         const texts = await Content.readArticles([url]);
         const full = texts && texts[url];
-        if (full && state.ttsToken === token) narrateFullStory(full, title, token);
+        // cap the raw fallback so a long article doesn't become a wall of text
+        if (full && state.ttsToken === token) narrateFullStory(full.slice(0, 4000), title, token);
       }
       setPreparing(btn, false);
     } catch { setPreparing(btn, false); }
