@@ -65,6 +65,9 @@ function stripTags(html) {
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
     .replace(/<(nav|aside|footer|form|iframe|svg|button|select|input)[\s>][\s\S]*?<\/\1>/gi, ' ')
+    // math blocks (Wikipedia LaTeX) — unreadable aloud, drop entirely
+    .replace(/<(math|semantics|annotation)[\s>][\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<span[^>]*class=["'][^"']*mwe-math[^"']*["'][^>]*>[\s\S]*?<\/span>/gi, ' ')
     // common boilerplate: infoboxes, navboxes, toc, metadata, jump links, coordinates
     .replace(/<(table|div|span|ul|ol|li|aside)[^>]*class=["'][^"']*(?:infobox|navbox|toc|mw-editsection|catlinks|noprint|printfooter|metadata|hatnote|dablink|portalbox|coordinates|mw-jump|mw-empty|ambox|sistersitebox|vertical-navbox|plainlinks)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<div[^>]*id=["'][^"']*(?:toc|mw-panel|footer|catlinks|coordinates)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, ' ');
