@@ -1,7 +1,10 @@
 # Aurora — Netlify configuration
 [build]
-  # publish dir is the repo root; keep node_modules out of every deploy
-  command = "rm -rf node_modules 2>/dev/null || true"
+  # publish dir is the repo root. No build step needed — Netlify installs deps
+  # automatically, and node_modules/ is gitignored so it never ships.
+  # (Removed the old "rm -rf node_modules" hack: it deleted Netlify's installed
+  # deps and would silently break git builds if a runtime dep is ever added.)
+  command = "echo 'static site — no build step; functions bundled by esbuild'"
   publish = "."
 
 [functions]
