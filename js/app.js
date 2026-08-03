@@ -14,9 +14,11 @@
     openrouterModel: 'meta-llama/llama-3.3-70b-instruct:free',
     newsKey: '',
     narratorVoice: 'en-US-EmmaMultilingualNeural',  // free neural narrator voice (Edge TTS)
+    narrationMode: 'briefing',       // 'briefing' | 'deep' — news-anchor broadcast style
     perSource: 8,
     contentReader: true,           // fetch full article text via serverless backend
     autoRoute: true,               // detect query type & prioritize matching sources
+    deepResearch: false,           // run the autonomous research planner before reports
     sources: {
       wikipedia: true, hackernews: true, web: true, academic: true, news: false,
       books: true, qa: true, code: true, markets: true, weather: true,
@@ -56,6 +58,10 @@
     chatBusy: false,
     ttsTrack: null,        // { text, title } — current audio source for voice/rate restart
     ttsToken: 0,           // increments on every Listen click — guards stale summary appends
+    activePlan: null,      // autonomous research plan (Planner) used by the last deep research
+    researchProcess: null, // { plan, stats, gaps, errors, evidence, confidence, limitations }
+    researchRunning: false,
+    planToken: 0,          // increments on every new search/research — guards stale async continuations
   };
 
   const CHAT_SUGGESTS = [
@@ -115,6 +121,7 @@
     $('#openrouterModel').value = state.settings.openrouterModel || 'meta-llama/llama-3.3-70b-instruct:free';
     $('#newsKey').value = state.settings.newsKey || '';
     $('#narratorVoice').value = state.settings.narratorVoice || 'en-US-EmmaMultilingualNeural';
+    syncModePickers();
     $('#perSource').value = state.settings.perSource;
     $('#perSourceVal').textContent = state.settings.perSource;
     $('#srcWikipedia').checked = !!state.settings.sources.wikipedia;
@@ -129,6 +136,7 @@
     $('#srcWeather').checked = !!state.settings.sources.weather;
     $('#contentReader').checked = !!state.settings.contentReader;
     $('#autoRoute').checked = !!state.settings.autoRoute;
+    $('#deepResearch').checked = !!state.settings.deepResearch;
     const statEl = $('#statSources');
     if (statEl) statEl.textContent = Object.values(state.settings.sources).filter(Boolean).length;
     $('#geminiGroup').hidden = state.settings.provider !== 'gemini';
@@ -199,6 +207,13 @@
       syncNarrator();
     });
     $('#testNarratorBtn').addEventListener('click', testNarrator);
+    $('#narrationModePick').addEventListener('change', e => {
+      if (e.target.name === 'narrationMode') {
+        state.settings.narrationMode = e.target.value === 'deep' ? 'deep' : 'briefing';
+        saveSettings();
+        syncModePickers();
+      }
+    });
     $('#perSource').addEventListener('input', e => {
       $('#perSourceVal').textContent = e.target.value;
       state.settings.perSource = Number(e.target.value);
@@ -222,11 +237,16 @@
       state.settings.autoRoute = e.target.checked;
       saveSettings();
     });
+    $('#deepResearch').addEventListener('change', e => {
+      state.settings.deepResearch = e.target.checked;
+      saveSettings();
+    });
     $('#clearLibBtn').addEventListener('click', clearLibrary);
 
     // results & report
-    $('#generateBtn').addEventListener('click', generateReport);
-    $('#regenerateBtn').addEventListener('click', generateReport);
+    $('#generateBtn').addEventListener('click', () => generateReport(null, { plan: state.settings.deepResearch }));
+    $('#regenerateBtn').addEventListener('click', () => generateReport(null, { plan: false }));
+    $('#deepResearchBtn').addEventListener('click', () => doDeepResearch($('#searchInput').value));
     $('#reportBackBtn').addEventListener('click', () => showView('results'));
     $('#copyReportBtn').addEventListener('click', copyReport);
     $('#downloadReportBtn').addEventListener('click', downloadReport);
@@ -311,6 +331,34 @@
       TTS.setSettings({ rate: Number(e.target.value) });
       restartTtsTrack();
     });
+    // anchor player: live mode switch, chapter timeline, feedback
+    $('#ttsModes').addEventListener('click', e => {
+      const btn = e.target.closest('.tts-mode-btn');
+      if (!btn) return;
+      state.settings.narrationMode = btn.dataset.mode === 'deep' ? 'deep' : 'briefing';
+      saveSettings();
+      syncModePickers();
+      restartTtsTrack();
+    });
+    $('#ttsPrevCh').addEventListener('click', () => TTS.skipScript(-1));
+    $('#ttsNextCh').addEventListener('click', () => TTS.skipScript(1));
+    $('#ttsChapters').addEventListener('click', e => {
+      const dot = e.target.closest('.tts-chap');
+      if (dot && dot.dataset.ch != null) TTS.jumpChapter(Number(dot.dataset.ch));
+    });
+    $('#ttsHelpful').addEventListener('click', () => sendNarrationFeedback('helpful'));
+    $('#ttsNotHelpful').addEventListener('click', () => sendNarrationFeedback('not_helpful'));
+    $('#ttsIssue').addEventListener('click', e => { e.stopPropagation(); toggleIssueMenu(); });
+    $('#ttsIssueMenu').addEventListener('click', e => {
+      const btn = e.target.closest('[data-issue]');
+      if (!btn) return;
+      if (typeof Anchor !== 'undefined') {
+        Anchor.reportIssue(btn.dataset.issue, { title: state.ttsTrack ? state.ttsTrack.title : '' });
+        UI.toast('Thanks — your feedback helps Aurora narrate better.', 'ok');
+      }
+      hideIssueMenu();
+    });
+    document.addEventListener('click', hideIssueMenu);
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = populateTtsVoices;
     }
@@ -423,18 +471,30 @@
       voiceSel.disabled = isNarrator;
       voiceSel.title = isNarrator ? 'The free neural narrator voice is used while active — pick another in Settings' : '';
     }
+    syncModePickers();
+    renderChapterDots();
+    // allow feedback on every new track
+    const helpful = $('#ttsHelpful');
+    const notHelpful = $('#ttsNotHelpful');
+    if (helpful) { helpful.disabled = false; helpful.classList.remove('sent'); }
+    if (notHelpful) { notHelpful.disabled = false; notHelpful.classList.remove('sent'); }
   }
 
   function hideTtsPlayer() {
     $('#ttsPlayer').hidden = true;
+    hideIssueMenu();
     $$('[data-listen].playing').forEach(b => b.classList.remove('playing'));
+    const dots = $('#ttsChapters');
+    if (dots) { dots.innerHTML = ''; dots.hidden = true; }
+    const chapName = $('#ttsChapName');
+    if (chapName) chapName.textContent = '';
   }
 
+  // Plain single-chapter track (instant lines, narrator test)
   function speakTrack(text, title, onStateChange) {
     if (!TTS.supported()) { UI.toast('Audio isn\'t supported in this browser.', 'err'); return; }
-    state.ttsTrack = { text, title };
+    state.ttsTrack = { kind: 'plain', title, content: text, mode: state.settings.narrationMode };
     showTtsPlayer(title);
-    // hide the player + clear the highlight when the queue drains naturally
     const done = mode => {
       if (mode === 'ended') {
         hideTtsPlayer();
@@ -446,11 +506,98 @@
     if (!ok) UI.toast('Nothing to play for this item.', 'info');
   }
 
+  // ── Anchor narration: chaptered broadcast scripts ──
+  function syncModePickers() {
+    const mode = state.settings.narrationMode === 'deep' ? 'deep' : 'briefing';
+    $$('#ttsModes .tts-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    const radios = $$('#narrationModePick input');
+    if (radios.length) radios.forEach(r => { r.checked = r.value === mode; });
+  }
+
+  function buildTrackChapters(track) {
+    if (typeof Anchor === 'undefined') return [{ title: '', text: track.content }];
+    if (track.kind === 'report') return Anchor.reportChapters(track.content, track.title, track.mode || 'deep').chapters;
+    if (track.kind === 'plain') return [{ title: '', text: track.content }];
+    return Anchor.buildScript({ title: track.title, source: track.source || '', text: track.content, mode: track.mode }).chapters;
+  }
+
+  function speakScriptTrack(chapters, title, meta = {}) {
+    if (!TTS.supported()) { UI.toast('Audio isn\'t supported in this browser.', 'err'); return; }
+    const track = {
+      kind: meta.kind || 'plain',
+      title,
+      content: meta.content != null ? meta.content : (chapters || []).map(c => c.text).join(' '),
+      mode: meta.mode || state.settings.narrationMode,
+      source: meta.source || '',
+      _chapters: chapters,
+    };
+    state.ttsTrack = track;
+    state.ttsSessionStart = Date.now();
+    showTtsPlayer(title);
+    const done = mode => {
+      if (mode === 'ended') {
+        recordTtsSession(true);
+        hideTtsPlayer();
+        state.ttsTrack = null;
+      }
+      if (meta.onStateChange) meta.onStateChange(mode);
+    };
+    const ok = TTS.speakScript(chapters, { title, onStateChange: done, onChapter: renderChapterDots });
+    if (!ok) UI.toast('Nothing to play for this item.', 'info');
+  }
+
+  function renderChapterDots() {
+    const wrap = $('#ttsChapters');
+    const nameEl = $('#ttsChapName');
+    if (!wrap || !nameEl) return;
+    const st = TTS.state();
+    const n = st && st.chapters ? st.chapters : 0;
+    if (n < 2) { wrap.hidden = true; nameEl.textContent = ''; return; }
+    wrap.hidden = false;
+    const active = st.chapter != null ? st.chapter : 0;
+    wrap.innerHTML = Array.from({ length: n }, (_, i) =>
+      `<button class="tts-chap ${i < active ? 'done' : ''} ${i === active ? 'active' : ''}" data-ch="${i}" title="Section ${i + 1}" aria-label="Section ${i + 1}"></button>`).join('');
+    const chapters = state.ttsTrack && state.ttsTrack._chapters;
+    nameEl.textContent = chapters && chapters[active] ? chapters[active].title : `Section ${active + 1}`;
+  }
+
+  function recordTtsSession(completed) {
+    if (typeof Anchor === 'undefined' || !state.ttsSessionStart) return;
+    const seconds = Math.round((Date.now() - state.ttsSessionStart) / 1000);
+    Anchor.recordSession({
+      title: state.ttsTrack ? state.ttsTrack.title : '',
+      mode: state.ttsTrack ? state.ttsTrack.mode : state.settings.narrationMode,
+      seconds,
+      completed,
+    });
+    state.ttsSessionStart = null;
+  }
+
+  function sendNarrationFeedback(kind) {
+    if (typeof Anchor === 'undefined') return;
+    Anchor.recordFeedback(kind, { title: state.ttsTrack ? state.ttsTrack.title : '' });
+    const btn = kind === 'helpful' ? $('#ttsHelpful') : $('#ttsNotHelpful');
+    if (btn) { btn.classList.add('sent'); btn.disabled = true; }
+    UI.toast(kind === 'helpful' ? 'Glad it helped! ✓' : 'Thanks — we\'ll keep improving.', 'ok');
+  }
+
+  function toggleIssueMenu() {
+    const menu = $('#ttsIssueMenu');
+    if (menu) menu.hidden = !menu.hidden;
+  }
+  function hideIssueMenu() {
+    const m = $('#ttsIssueMenu');
+    if (m) m.hidden = true;
+  }
+
   function restartTtsTrack() {
     if (!state.ttsTrack || !TTS.state()) return;
-    // re-speak from the top with the new voice/rate
-    const { text, title } = state.ttsTrack;
-    speakTrack(text, title);
+    // re-speak from the top with the current voice/rate/mode (rebuilds the script)
+    const t = state.ttsTrack;
+    t.mode = state.settings.narrationMode;
+    const chapters = buildTrackChapters(t);
+    if (!chapters || !chapters.length) return;
+    speakScriptTrack(chapters, t.title, { kind: t.kind, content: t.content, mode: t.mode, source: t.source });
   }
 
   function toggleTtsPause() {
@@ -461,18 +608,22 @@
   }
 
   function stopTts() {
+    recordTtsSession(false);
     TTS.stop();
     hideTtsPlayer();
     state.ttsTrack = null;
   }
 
-  // News story: speak headline instantly, then scrape the FULL article from the
-  // official site and narrate an elegant AI summary of it. Falls back to the full
-  // article text if the summarize backend is unavailable.
+  // News story: speak an instant anchor line, then scrape the FULL article and
+  // narrate a professional broadcast script (briefing or deep dive) built from an
+  // elegant AI summary — never raw article text.
   async function listenToNews(story, btn) {
     const title = story.title || 'News story';
     const token = ++state.ttsToken;
-    speakTrack(`${story.title || ''}. ${story.snippet || ''}`, title);
+    const instant = typeof Anchor !== 'undefined'
+      ? Anchor.instantBriefing(title, story.snippet || '')
+      : `${story.title || ''}. ${story.snippet || ''}`;
+    speakTrack(instant, title);
     markListening(btn);
     const url = story.url;
     if (!url || typeof Content === 'undefined' || state.settings.contentReader === false) return;
@@ -482,22 +633,25 @@
       if (state.ttsToken !== token) { setPreparing(btn, false); return; } // user switched tracks — drop stale summary
       const text = data && data.summary ? data.summary : null;
       if (text) {
-        narrateFullStory(text, title, token);
+        await narrateScriptFromText(text, title, token, story.meta || '', 'news');
       } else {
         const texts = await Content.readArticles([url]);
         const full = texts && texts[url];
         // cap the raw fallback so a long article doesn't become a wall of text
-        if (full && state.ttsToken === token) narrateFullStory(full.slice(0, 4000), title, token);
+        if (full && state.ttsToken === token) await narrateScriptFromText(full.slice(0, 4000), title, token, story.meta || '', 'news');
       }
       setPreparing(btn, false);
-    } catch { setPreparing(btn, false); /* audio stays with headline+snippet */ }
+    } catch { setPreparing(btn, false); /* audio stays with the instant line */ }
   }
 
-  // Research result: speak title + snippet, then scrape + summarize the article
+  // Research result: speak an instant anchor line, then narrate a broadcast script
   async function listenToResult(r, btn) {
     const title = r.title || 'Search result';
     const token = ++state.ttsToken;
-    speakTrack(`${title}. ${r.snippet || ''}`, title);
+    const instant = typeof Anchor !== 'undefined'
+      ? Anchor.instantBriefing(title, r.snippet || '')
+      : `${title}. ${r.snippet || ''}`;
+    speakTrack(instant, title);
     markListening(btn);
     const url = r.url;
     if (!url || typeof Content === 'undefined' || state.settings.contentReader === false) return;
@@ -507,24 +661,37 @@
       if (state.ttsToken !== token) { setPreparing(btn, false); return; } // user switched tracks
       const text = data && data.summary ? data.summary : null;
       if (text) {
-        narrateFullStory(text, title, token);
+        await narrateScriptFromText(text, title, token, r.meta || '', 'result');
       } else {
         const texts = await Content.readArticles([url]);
         const full = texts && texts[url];
         // cap the raw fallback so a long article doesn't become a wall of text
-        if (full && state.ttsToken === token) narrateFullStory(full.slice(0, 4000), title, token);
+        if (full && state.ttsToken === token) await narrateScriptFromText(full.slice(0, 4000), title, token, r.meta || '', 'result');
       }
       setPreparing(btn, false);
     } catch { setPreparing(btn, false); }
   }
 
-  // Append the full-article summary to the playing track; if the headline already
-  // finished (track ended), narrate the summary as its own track — but never play
-  // a stale summary after the user switched to a different story.
-  function narrateFullStory(text, title, token) {
-    const st = TTS.state();
-    if (st && st.title === title) {
-      TTS.append(` ${text}`);
+  // Build a broadcast script from narration text and start it as a chaptered track.
+  // Tries the AI-assisted script first (better phrasing through the provider chain);
+  // falls back to the deterministic heuristic builder when the AI is unreachable.
+  // Both steps are token-guarded so a track switch mid-generation is never spoken.
+  async function narrateScriptFromText(text, title, token, source, kind) {
+    if (state.ttsToken !== token) return; // user switched tracks — drop stale script
+    const mode = state.settings.narrationMode;
+    let script = null;
+    // AI-assisted phrasing — silent failure, never blocks playback
+    if (typeof Anchor !== 'undefined' && typeof AI !== 'undefined') {
+      try {
+        script = await Anchor.buildAiScript({ title, source, text, mode, ai: AI, settings: state.settings });
+      } catch { script = null; }
+    }
+    if (!script && typeof Anchor !== 'undefined') {
+      script = Anchor.buildScript({ title, source, text, mode });
+    }
+    if (state.ttsToken !== token) return; // user switched tracks while AI was writing
+    if (script && script.chapters && script.chapters.length) {
+      speakScriptTrack(script.chapters, title, { kind, content: text, mode, source });
     } else if (state.ttsToken === token) {
       speakTrack(text, `${title} — full story`);
     }
@@ -547,15 +714,39 @@
     }
   }
 
-  // AI report: speak the full markdown (cleaned) — Aurora-authored, no licensing issue
+  // AI report: narrate the markdown as a chaptered deep dive — Aurora-authored,
+  // so the full structure is fair game (headings become broadcast sections).
   function listenToReport() {
     if (!state.reportMarkdown) { UI.toast('No report to listen to yet.', 'info'); return; }
-    speakTrack(state.reportMarkdown, state.reportTitle || 'Research report');
+    narrateReport(state.reportMarkdown, state.reportTitle || 'Research report');
+  }
+
+  function narrateReport(markdown, title) {
+    const mode = 'deep'; // reports are Aurora-owned — always the full structure
+    const script = typeof Anchor !== 'undefined'
+      ? Anchor.reportChapters(markdown, title, mode)
+      : null;
+    if (script && script.chapters && script.chapters.length) {
+      speakScriptTrack(script.chapters, title, { kind: 'report', content: markdown, mode });
+    } else {
+      speakTrack(markdown, title);
+    }
   }
 
   function markListening(btn) {
     $$('[data-listen].playing').forEach(b => b.classList.remove('playing'));
     if (btn) btn.classList.add('playing');
+  }
+
+  // Pre-generation: silently warm the top story's summary (server caches it for an
+  // hour) so the most popular item starts narrating instantly — never blocks UI.
+  function warmTopStory() {
+    if (!state.online || state.settings.contentReader === false || typeof Content === 'undefined') return;
+    const s = state.liveStories && state.liveStories[0];
+    if (!s || !s.url) return;
+    if (state._warmedUrl === s.url) return;
+    state._warmedUrl = s.url;
+    setTimeout(() => { Content.summarizeArticle(s.url, s.title).catch(() => {}); }, 2500);
   }
 
   // ═══════════ CHAT ═══════════
@@ -685,6 +876,7 @@
     if (!query) return;
     if (state.liveLoading) return;
     state.liveLoading = true;
+    state._warmedUrl = null;
     state.newsQuery = query;
     $('#newsClearBtn').hidden = false;
     $('#newsSearchInput').value = query;
@@ -699,6 +891,7 @@
       state.liveUpdated = Date.now();
       updateNewsModeChip();
       renderLiveFeed();
+      warmTopStory();
       if (!res.results.length) {
         $('#liveEmpty').hidden = false;
         $('#liveEmptyMsg').textContent = `No recent news for "${query}". Try different keywords.`;
@@ -716,6 +909,7 @@
     if (state.liveLoading) return;
     state.liveLoading = true;
     state.liveCat = cat;
+    state._warmedUrl = null; // re-evaluate which story to pre-warm for this feed
     const grid = $('#liveGrid');
     const catMeta = Search.LIVE_CATS[cat];
     if (catMeta) $('#liveTitle').textContent = catMeta.label;
@@ -729,6 +923,7 @@
       state.liveCatLoaded = cat;
       state.liveUpdated = Date.now();
       renderLiveFeed();
+      warmTopStory();
     } catch {
       // keep last good stories on a silent (auto-refresh) failure or same-category retry;
       // only show the empty state when the displayed stories wouldn't match the active tab
@@ -794,7 +989,7 @@
     state.resultsBySource = groupBySource(state.results);
     state.detected = 'news';
     $('#searchInput').value = state.lastQuery;
-    generateReport(`AI News Summary — ${scope}`);
+    generateReport(`AI News Summary — ${scope}`, { plan: false });
   }
 
 
@@ -845,6 +1040,8 @@
 
     state.lastQuery = query;
     state.results = [];
+    resetResearchPlanUI();
+    state.planToken++; // invalidate any in-flight deep research
     $('#searchInput').value = query;
     $('#suggestions').hidden = true;
     $('#resultsQuery').textContent = query;
@@ -937,6 +1134,7 @@
       <article class="result-card">
         <div class="rc-top">
           <span class="rc-source ${m.color}"><svg class="ic" aria-hidden="true"><use href="#${m.icon}"/></svg>${m.label}</span>
+          ${trustChipHtml(r)}
           <span class="rc-time"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>${UI.timeAgo(r.publishedAt) || 'recent'}</span>
         </div>
         <h3 class="rc-title"><a href="${UI.esc(r.url)}" target="_blank" rel="noopener noreferrer">${UI.esc(r.title)}</a></h3>
@@ -980,9 +1178,234 @@
     } catch { box.hidden = true; }
   }
 
+  // ═══════════ AUTONOMOUS RESEARCH PLANNER ═══════════
+  // Deep Research entry point: plan → parallel searches → gap fill → report
+  async function doDeepResearch(query) {
+    query = (query || '').trim();
+    if (!query) { UI.toast('Type a research question first', 'info'); return; }
+    if (state.researchRunning) return;
+    state.lastQuery = query;
+    state.results = [];
+    $('#searchInput').value = query;
+    const done = await runPlannedResearch(query, { merge: false });
+    if (!done) return; // superseded by a newer search/research
+    if (!state.results.length) {
+      $('#resultsEmpty').hidden = false;
+      $('#resultsEmptyMsg').textContent = `Nothing found for "${query}". Try different keywords or check your connection.`;
+      return;
+    }
+    generateReport(null, { plan: true });
+  }
+
+  // Autonomous research run: create plan, show live progress, search each aspect
+  // in parallel, detect + fill knowledge gaps, then compute evidence confidence.
+  async function runPlannedResearch(query, opts = {}) {
+    if (state.researchRunning) return false;
+    const token = ++state.planToken; // this run owns the UI until a newer search/research starts
+    state.researchRunning = true;
+    state.researchProcess = null;
+    try {
+      state.activePlan = null;
+      $('#generateBtn').disabled = true;
+      showView('results');
+      $('#resultsQuery').textContent = query;
+      $('#resultsMeta').textContent = 'Planning research…';
+      $('#resultsEmpty').hidden = true;
+      $('#resultsLoading').hidden = true;
+      $('#detectedBadge').hidden = true;
+      $('#sourceTabs').innerHTML = '';
+      $('#resultsGrid').innerHTML = '';
+      const panel = $('#researchPlanPanel');
+      if (panel) { panel.hidden = true; }
+      $('#rpStats').hidden = true;
+
+      setPlanStatus('Creating research plan…');
+      setPlanProgress(0.06);
+
+      const out = await Planner.runResearch(query, state.settings, {
+        onPlan(plan) { showPlanPanel(plan); setPlanProgress(0.15); },
+        onStage(stage) {
+          const labels = {
+            plan: 'Creating research plan…',
+            search: 'Running parallel searches…',
+            gaps: 'Analyzing knowledge gaps…',
+            merge: 'Merging & verifying evidence…',
+          };
+          setPlanStatus(labels[stage] || 'Working…');
+          if (stage === 'search') setPlanProgress(0.32);
+          else if (stage === 'gaps') setPlanProgress(0.62);
+          else if (stage === 'merge') setPlanProgress(0.86);
+        },
+        onAspect(aspect, i, status) { updateAspectStatus(aspect, status); },
+        onGap(gap) {
+          setPlanStatus(`Knowledge gap: ${(gap.reason || 'low coverage').toLowerCase()} — running follow-up…`);
+        },
+        onGapsFilled(filled) {
+          setPlanStatus(filled.length ? 'Gaps filled — verifying evidence…' : 'No gaps to fill.');
+        },
+      });
+
+      // A newer search/research superseded this run — drop its continuation
+      if (token !== state.planToken) return false;
+
+      state.activePlan = out.plan;
+      state.results = opts.merge && state.results.length
+        ? Planner.dedupe([...state.results, ...out.results])
+        : out.results;
+      state.resultsBySource = groupBySource(state.results);
+      state.detected = null;
+      state.researchProcess = {
+        plan: out.plan,
+        stats: out.stats,
+        gaps: out.gaps,
+        errors: out.errors,
+        evidence: out.evidence,
+        confidence: out.confidence,
+        limitations: out.limitations,
+      };
+
+      setPlanStatus('Research complete', false);
+      setPlanProgress(1);
+      const ev = out.evidence;
+      const statsEl = $('#rpStats');
+      if (statsEl) {
+        statsEl.hidden = false;
+        statsEl.innerHTML = [
+          `<span class="rp-stat">${out.stats.queriesRun} query${out.stats.queriesRun === 1 ? '' : 's'} run</span>`,
+          `<span class="rp-stat">${out.results.length} result${out.results.length === 1 ? '' : 's'}</span>`,
+          `<span class="rp-stat">${out.stats.gapsFound} gap${out.stats.gapsFound === 1 ? '' : 's'} · ${out.stats.gapsFilled} filled</span>`,
+          `<span class="rp-stat">🟢 ${ev.consensusCount} consensus · 🔴 ${ev.contradictionCount} contradiction</span>`,
+          `<span class="rp-stat">${Math.round(out.stats.durationMs / 1000)}s</span>`,
+        ].join('');
+      }
+
+      if (!out.results.length) {
+        $('#resultsMeta').textContent = 'No results found';
+      } else {
+        $('#resultsMeta').textContent =
+          `${out.results.length} result${out.results.length === 1 ? '' : 's'} across ${out.plan.aspects.length} research aspect${out.plan.aspects.length === 1 ? '' : 's'} · ${Math.round(out.evidence.confidence * 100)}% confidence`;
+        renderSourceTabs();
+        renderResults('all');
+        $('#generateBtn').disabled = false;
+      }
+      return true;
+    } finally {
+      state.researchRunning = false;
+    }
+  }
+
+  function resetResearchPlanUI() {
+    state.activePlan = null;
+    state.researchProcess = null;
+    const panel = $('#researchPlanPanel');
+    if (panel) panel.hidden = true;
+    const proc = $('#researchProcessPanel');
+    if (proc) proc.hidden = true;
+  }
+
+  function showPlanPanel(plan) {
+    const panel = $('#researchPlanPanel');
+    if (!panel) return;
+    $('#rpTitle').textContent = plan.title || 'Research plan';
+    const intent = $('#rpIntent');
+    intent.hidden = false;
+    intent.innerHTML = `<svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg> ${UI.esc(plan.intentLabel || 'Research')} intent · plan by ${plan.origin === 'ai' ? 'AI' : 'heuristics'}`;
+    $('#rpAspects').innerHTML = (plan.aspects || []).map((a, i) => `
+      <li class="rp-aspect" data-aspect="${a.id}">
+        <span class="rp-a-dot">${i + 1}</span>
+        <span class="rp-a-info">
+          <span class="rp-a-q">${UI.esc(a.question)}</span>
+          <span class="rp-a-query">${UI.esc(a.queries.join(' · '))}</span>
+        </span>
+        <span class="rp-a-meta">queued</span>
+      </li>`).join('');
+    panel.hidden = false;
+  }
+
+  function updateAspectStatus(aspect, status) {
+    const li = $(`#rpAspects [data-aspect="${aspect.id}"]`);
+    if (!li) return;
+    li.className = 'rp-aspect ' + (status === 'done' ? (aspect.gapFilled ? 'gap done' : 'done') : status);
+    const meta = li.querySelector('.rp-a-meta');
+    if (!meta) return;
+    if (status === 'searching') meta.textContent = 'searching…';
+    else if (status === 'error') meta.textContent = 'no results';
+    else if (aspect.resultCount != null) meta.textContent = aspect.gapFilled
+      ? `${aspect.resultCount} results · gap filled`
+      : `${aspect.resultCount} results`;
+  }
+
+  function setPlanStatus(text, spinner = true) {
+    const el = $('#rpStatus');
+    if (!el) return;
+    el.innerHTML = spinner ? `<span class="spinner"></span>${UI.esc(text)}` : UI.esc(text);
+  }
+
+  function setPlanProgress(pct) {
+    const f = $('#rpProgressFill');
+    if (f) f.style.width = `${Math.round(pct * 100)}%`;
+  }
+
+  // Compact trust-tier chip for a result card
+  function trustChipHtml(r) {
+    if (typeof Trust === 'undefined' || !r) return '';
+    const t = Trust.score(r);
+    return `<span class="trust-chip ${t.color}" title="${UI.esc(t.hint)} — ${UI.esc(t.label)}">${t.emoji} T${t.tier} · ${t.credibility}</span>`;
+  }
+
+  // Render the "Research process" transparency panel (planned research only)
+  function renderResearchProcess() {
+    const panel = $('#researchProcessPanel');
+    if (!panel || typeof Planner === 'undefined') return;
+    const proc = state.researchProcess;
+    if (!proc || !proc.plan) { panel.hidden = true; return; }
+    const plan = proc.plan;
+    const ev = proc.evidence || {};
+    const level = Planner.confidenceLevel(proc.confidence != null ? proc.confidence : 0);
+    const queries = [];
+    for (const a of (plan.aspects || [])) for (const q of (a.queries || [])) queries.push(q);
+    const domains = new Set();
+    for (const r of state.results) {
+      try { const h = new URL(r.url).hostname; if (h) domains.add(h); } catch { /* ignore */ }
+    }
+    const lims = (proc.limitations || []).slice(0, 6);
+
+    $('#researchProcessBody').innerHTML = `
+      <div class="rp2-grid">
+        <div class="rp2-cell"><b>${queries.length}</b><span>Search queries run</span></div>
+        <div class="rp2-cell"><b>${domains.size}</b><span>Sources consulted</span></div>
+        <div class="rp2-cell"><b class="conf-badge ${level.color}">${level.emoji} ${Math.round((proc.confidence || 0) * 100)}%</b><span>${level.label}</span></div>
+        <div class="rp2-cell"><b>${ev.consensusCount || 0}</b><span>Consensus topics</span></div>
+        <div class="rp2-cell"><b>${ev.contradictionCount || 0}</b><span>Contradictions</span></div>
+      </div>
+      ${queries.length ? `<div class="rp2-block"><h5><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> Searched for</h5><div class="rp2-queries">${queries.map(q => `<span class="rp2-query">${UI.esc(q)}</span>`).join('')}</div></div>` : ''}
+      ${ev.clusters && ev.clusters.length ? `<div class="rp2-block"><h5><svg class="ic" aria-hidden="true"><use href="#i-qa"/></svg> Evidence & confidence</h5>${ev.clusters.map(c => {
+        const cl = Planner.confidenceLevel(c.confidence);
+        return `<div class="rp2-cluster">
+          <div class="rp2-cluster-head">
+            <span class="rp2-cluster-title">${UI.esc(c.title)}</span>
+            <span class="rp2-cluster-meta">${c.count} result${c.count === 1 ? '' : 's'} · ${c.domains} domain${c.domains === 1 ? '' : 's'} · <b class="conf-badge ${cl.color}">${Math.round(c.confidence * 100)}%</b></span>
+          </div>
+          <div class="rp2-cluster-meta">${c.consensus ? '🟢 multi-source consensus' : c.singleSource ? '🔴 single-source claim' : '🟡 mixed sources'}${c.contradiction ? ` · ⚠️ contradiction detected (${UI.esc(c.contradiction)})` : ''}</div>
+        </div>`;
+      }).join('')}</div>` : ''}
+      ${lims.length ? `<div class="rp2-block"><h5><svg class="ic" aria-hidden="true"><use href="#i-wifi-off"/></svg> Known uncertainties</h5><ul>${lims.map(l => `<li>${UI.esc(l)}</li>`).join('')}</ul></div>` : ''}
+    `;
+    panel.hidden = false;
+  }
+
   // ═══════════ REPORT GENERATION ═══════════
-  async function generateReport(titleOverride) {
-    if (state.isGenerating) return;
+  async function generateReport(titleOverride, opts = {}) {
+    if (state.isGenerating || state.researchRunning) return;
+    // Autonomous planning: build a research plan + run parallel searches first
+    // when the Deep Research button was used, or the "Deep Research by default"
+    // setting is on and no plan has been created yet.
+    const wantPlan = opts.plan !== false && (opts.plan === true || state.settings.deepResearch);
+    if (wantPlan && !state.activePlan) {
+      if (!state.lastQuery) { UI.toast('Search something first', 'info'); return; }
+      const done = await runPlannedResearch(state.lastQuery, { merge: state.results.length > 0 });
+      if (!done) return; // research superseded by a newer search — drop this generation
+    }
     if (!state.results.length) { UI.toast('Search something first', 'info'); return; }
 
     const customTitle = (typeof titleOverride === 'string' && titleOverride.trim()) ? titleOverride.trim() : null;
@@ -1002,12 +1425,21 @@
     // progress steps (clear any from a previous run)
     $('#progressSteps').innerHTML = '';
     $('#progressFill').style.width = '0%';
-    const steps = [
-      'Gathering & reading sources',
-      'Synthesizing across sources',
-      'Writing the report',
-      'Finalizing citations',
-    ];
+    const planned = !!(state.activePlan && state.activePlan.aspects && state.activePlan.aspects.length);
+    const steps = planned
+      ? [
+          'Research plan ready',
+          'Gathering & reading sources',
+          'Synthesizing across sources',
+          'Writing the report',
+          'Finalizing citations',
+        ]
+      : [
+          'Gathering & reading sources',
+          'Synthesizing across sources',
+          'Writing the report',
+          'Finalizing citations',
+        ];
     const stepEls = steps.map((s, i) => {
       const li = UI.el('li', i === 0 ? 'active' : '', `<span class="step-dot"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></span>${s}`);
       $('#progressSteps').appendChild(li);
@@ -1028,35 +1460,39 @@
 
     // Full-content read (RAG): fetch article text via serverless backend when enabled
     let fullContent = null;
+    const readStep = planned ? stepEls[1] : stepEls[0];
     if (state.settings.contentReader && state.results.length && typeof Content !== 'undefined') {
-      stepEls[0] && stepEls[0].classList.add('active');
-      stepEls[0] && (stepEls[0].lastChild.textContent = 'Reading full articles…');
+      readStep && readStep.classList.add('active');
+      readStep && (readStep.lastChild.textContent = 'Reading full articles…');
       const urls = state.results.map(r => r.url).slice(0, 12);
       fullContent = await Content.readArticles(urls);
       if (fullContent && Object.keys(fullContent).length) {
         const n = Object.keys(fullContent).length;
-        stepEls[0] && (stepEls[0].lastChild.textContent = `Read ${n} full article${n === 1 ? '' : 's'}`);
+        readStep && (readStep.lastChild.textContent = `Read ${n} full article${n === 1 ? '' : 's'}`);
       } else {
         // backend unavailable — fall back to snippets and say so
-        stepEls[0] && (stepEls[0].lastChild.textContent = 'Full articles unavailable — using snippets');
+        readStep && (readStep.lastChild.textContent = 'Full articles unavailable — using snippets');
       }
     }
 
     try {
-      const { markdown, provider } = await AI.generate(state.lastQuery, state.results, state.settings, {
-        onProgress: (label, pct) => {
-          const stage = Object.values(AI.PROGRESS).indexOf(label);
-          stepEls.forEach((el, i) => {
-            el.classList.toggle('done', i < stage);
-            el.classList.toggle('active', i === stage);
-          });
-          $('#progressFill').style.width = `${Math.round(pct * 100)}%`;
-        },
-        onChunk: chunk => {
-          rendered += chunk;
-          renderThrottle();
-        },
-      }, ac.signal, fullContent);
+      const { markdown, provider } = await AI.generate(
+        state.lastQuery, state.results, state.settings, {
+          onProgress: (label, pct) => {
+            const stage = Object.values(AI.PROGRESS).indexOf(label);
+            stepEls.forEach((el, i) => {
+              el.classList.toggle('done', i < stage);
+              el.classList.toggle('active', i === stage);
+            });
+            $('#progressFill').style.width = `${Math.round(pct * 100)}%`;
+          },
+          onChunk: chunk => {
+            rendered += chunk;
+            renderThrottle();
+          },
+        }, ac.signal, fullContent,
+        state.activePlan,
+        state.researchProcess && state.researchProcess.evidence);
 
       // final clean render
       state.reportMarkdown = markdown;
@@ -1076,6 +1512,7 @@
 
       state.reportSources = state.results.slice(0, 12);
       renderReportSources();
+      renderResearchProcess();
       await saveReportToLibrary(markdown, provider);
     } catch (e) {
       console.error('Report generation failed:', e);
@@ -1126,6 +1563,20 @@
         provider: provider || state.settings.provider,
         sourceCount: state.results.length,
         sources: state.results.slice(0, 12).map(r => ({ title: r.title, url: r.url, source: r.source })),
+        plan: state.activePlan ? {
+          title: state.activePlan.title,
+          intent: state.activePlan.intent,
+          intentLabel: state.activePlan.intentLabel,
+          origin: state.activePlan.origin,
+          aspects: (state.activePlan.aspects || []).map(a => ({ question: a.question, queries: a.queries })),
+        } : undefined,
+        researchProcess: state.researchProcess ? {
+          confidence: state.researchProcess.confidence,
+          limitations: state.researchProcess.limitations,
+          stats: state.researchProcess.stats,
+          gaps: state.researchProcess.gaps,
+          evidence: state.researchProcess.evidence,
+        } : undefined,
       };
       await Storage.saveReport(report);
       state.reportSavedId = report.id;
@@ -1220,7 +1671,7 @@
     try {
       const r = await Storage.getReport(id);
       if (!r) { UI.toast('Report not found', 'err'); return; }
-      speakTrack(r.markdown, r.title || r.query || 'Saved report');
+      narrateReport(r.markdown, r.title || r.query || 'Saved report');
     } catch { UI.toast('Could not load report to listen to', 'err'); }
   }
 
@@ -1243,6 +1694,17 @@
       $('#savedBanner').hidden = true;
       $('#reportSources').hidden = true;
       renderReportSources();
+      if (r.plan || r.researchProcess) {
+        state.activePlan = r.plan || null;
+        state.researchProcess = r.researchProcess ? { ...r.researchProcess, plan: r.plan } : null;
+        state.results = (r.sources || []).map(s => ({ title: s.title, url: s.url, source: s.source }));
+        renderResearchProcess();
+      } else {
+        state.activePlan = null;
+        state.researchProcess = null;
+        const pp = $('#researchProcessPanel');
+        if (pp) pp.hidden = true;
+      }
       showView('report');
     } catch (e) {
       console.error(e);
@@ -1285,6 +1747,29 @@
   function openSettings() {
     applySettingsToUI();
     $('#settingsModal').hidden = false;
+    refreshNarrationMetrics();
+  }
+
+  function refreshNarrationMetrics() {
+    if (typeof Anchor === 'undefined') return;
+    const m = Anchor.metrics();
+    if (!m) {
+      ['nmSessions', 'nmCompletion', 'nmAvgTime', 'nmThumbsUp'].forEach(id => {
+        const el = $(`#${id}`);
+        if (el) el.textContent = '—';
+      });
+      const mix = $('#nmModeMix');
+      if (mix) mix.textContent = 'No listen sessions yet — start listening to see metrics.';
+      return;
+    }
+    const set = (id, val) => { const el = $(`#${id}`); if (el) el.textContent = val; };
+    set('nmSessions', m.sessions);
+    set('nmCompletion', Math.round(m.completionRate * 100) + '%');
+    set('nmAvgTime', m.avgSeconds + 's');
+    set('nmThumbsUp', m.thumbsUp);
+    const modeCounts = Object.entries(m.modes || {}).map(([k, v]) => `${k}: ${v}`).join(' · ');
+    const mix = $('#nmModeMix');
+    if (mix) mix.textContent = modeCounts ? `Mode mix: ${modeCounts}` : '';
   }
   function closeSettings() { $('#settingsModal').hidden = true; }
 

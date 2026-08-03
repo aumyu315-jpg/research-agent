@@ -26,6 +26,25 @@ You help users understand any topic in depth — news events, science, history, 
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+  // Hard timeout wrapper: a hung provider turns into a normal Error (never an
+  // AbortError) so the fallback chain proceeds to the next provider instead of
+  // stalling the report on a silent request.
+  async function fetchWithTimeout(url, opts = {}, ms) {
+    const ctrl = new AbortController();
+    const sigs = [ctrl.signal];
+    if (opts.signal) sigs.push(opts.signal);
+    const sig = (typeof AbortSignal.any === 'function' && sigs.length > 1) ? AbortSignal.any(sigs) : sigs[0];
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      return await fetch(url, { ...opts, signal: sig });
+    } catch (e) {
+      if (ctrl.signal.aborted) throw new Error('AI request timed out — using fallback…');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   // ── Prompt ──
   function buildPrompt(query, results, fullContent) {
     const packed = results.slice(0, 30).map((r, i) => {
@@ -75,6 +94,73 @@ Here are the web search results gathered from news, articles, papers, books, Q&A
 ${packed}
 
 Now write the professional research report following your structure exactly.`,
+    };
+  }
+
+  // Planned-research prompt — packs results per plan aspect and requires the
+  // Research Process + Evidence & Confidence sections for full transparency.
+  // Reuses the standard system prompt (via buildPrompt) so rigor stays consistent.
+  function buildPlannedPrompt(query, plan, results, fullContent, evidence) {
+    const base = buildPrompt(query, results, fullContent); // standard system (its user is unused)
+    const today = new Date().toISOString().slice(0, 10);
+    const aspects = ((plan && plan.aspects) || []).slice(0, 4);
+
+    const planBlock = aspects.map((a, i) =>
+      `### Aspect ${i + 1}: ${a.question}\n  Search queries: ${(a.queries || []).join(' · ')}`
+    ).join('\n');
+
+    // Pack results grouped by aspect with sequential citation numbers
+    const byAspect = {};
+    for (const a of aspects) byAspect[a.id] = [];
+    const rest = [];
+    for (const r of results || []) {
+      if (r.aspect && byAspect[r.aspect]) byAspect[r.aspect].push(r);
+      else rest.push(r);
+    }
+    const lines = [];
+    let n = 0;
+    for (const a of aspects) {
+      const items = byAspect[a.id] || [];
+      if (!items.length) continue;
+      lines.push(`## Aspect ${aspects.indexOf(a) + 1} — ${a.question}`);
+      for (const r of items.slice(0, 8)) {
+        n++;
+        const article = fullContent && fullContent[r.url];
+        const body = article
+          ? `    [FULL TEXT READ]\n${article.slice(0, 3500)}`
+          : `    ${(r.snippet || '').slice(0, 350)}`;
+        lines.push(`[${n}] (${r.source}) ${r.title}\n    URL: ${r.url}\n${body}`);
+      }
+    }
+    if (rest.length) {
+      lines.push('## Additional results');
+      for (const r of rest.slice(0, 10)) {
+        n++;
+        lines.push(`[${n}] (${r.source}) ${r.title}\n    URL: ${r.url}\n    ${(r.snippet || '').slice(0, 350)}`);
+      }
+    }
+
+    const ev = evidence || {};
+    const evBlock = [
+      `- Overall confidence: ${ev.confidence != null ? Math.round(ev.confidence * 100) + '%' : 'not computed'}`,
+      `- Consensus topics (multiple independent sources): ${ev.consensusCount || 0}`,
+      `- Single-source claims: ${ev.singleSourceCount || 0}`,
+      `- Contradictions detected: ${ev.contradictionCount || 0}`,
+      ev.clusters && ev.clusters.length
+        ? `- Top evidence clusters:\n${ev.clusters.map(c =>
+            `  • "${c.title}" — ${c.count} result(s), ${c.domains} domain(s), confidence ${Math.round(c.confidence * 100)}%${c.contradiction ? `, CONTRADICTION (${c.contradiction})` : ''}`).join('\n')}`
+        : '',
+    ].filter(Boolean).join('\n');
+
+    const readNote = fullContent
+      ? '\n\nFull article text is provided for several sources — read it carefully and base your analysis on it.'
+      : '';
+
+    const system = base.system + `\n\n# PLANNED RESEARCH CONTEXT\nThis report was produced by an autonomous research planner. The plan sub-questions were:\n${planBlock}\n\n# ADDITIONAL SECTIONS (required — insert after "## Outlook" and before "## Sources"):\n## Research Process — one short paragraph: how many sub-questions were researched, how many sources were consulted, and any coverage gaps or limitations. Summarize the process only — never expose raw chain-of-thought.\n## Evidence & Confidence — restate the evidence summary in prose: which claims have strong multi-source consensus, which rest on a single source, and any contradictions. State the overall confidence as a percentage with an honest caveat when it is low.`;
+
+    return {
+      system,
+      user: `Today's date: ${today}\n\nResearch topic: "${query}"\n\nEvidence overview from cross-source verification:\n${evBlock}\n\nHere are the web search results gathered per plan aspect from news, articles, papers, books, Q&A, market data, and reference sources:${readNote}\n\n${lines.join('\n\n')}\n\nNow write the professional research report following your structure exactly, including the required additional sections.`,
     };
   }
 
@@ -140,7 +226,7 @@ Now write the professional research report following your structure exactly.`,
     // Streaming POST attempt (may 402/429 on anonymous tier — fall through on failure)
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const res = await fetch('https://text.pollinations.ai/', {
+        const res = await fetchWithTimeout('https://text.pollinations.ai/', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -152,7 +238,7 @@ Now write the professional research report following your structure exactly.`,
             stream: true,
           }),
           signal,
-        });
+        }, 90000);
         if (res.ok && res.body) {
           onProgress(PROGRESS.synthesizing, 0.35);
           const text = await streamOpenAICompat(res, onChunk);
@@ -191,9 +277,10 @@ Now write the professional research report following your structure exactly.`,
     const budget = 12000 - compactSystem.length;
     const userTrim = prompt.user.length > budget ? prompt.user.slice(0, budget) : prompt.user;
     const promptText = `${compactSystem}\n\n${userTrim}`;
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://text.pollinations.ai/${encodeURIComponent(promptText)}?model=openai&json=false`,
-      { signal });
+      { signal },
+      45000);
     if (!res.ok) throw new Error(`AI service unavailable (${res.status}).`);
     const text = await res.text();
     if (!text.trim()) throw new Error('AI returned an empty response.');
@@ -213,9 +300,10 @@ Now write the professional research report following your structure exactly.`,
       contents: [{ role: 'user', parts: [{ text: `${prompt.system}\n\n${prompt.user}` }] }],
       generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
     };
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal },
+      90000);
 
     if (!res.ok) {
       const err = await res.text().catch(() => '');
@@ -268,7 +356,7 @@ Now write the professional research report following your structure exactly.`,
     const model = settings.groqModel || 'llama-3.3-70b-versatile';
 
     onProgress(PROGRESS.synthesizing, 0.4);
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -285,7 +373,7 @@ Now write the professional research report following your structure exactly.`,
         stream: true,
       }),
       signal,
-    });
+    }, 60000);
 
     if (!res.ok) {
       const err = await res.text().catch(() => '');
@@ -305,7 +393,7 @@ Now write the professional research report following your structure exactly.`,
     const model = settings.openrouterModel || 'meta-llama/llama-3.3-70b-instruct:free';
 
     onProgress(PROGRESS.synthesizing, 0.4);
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -322,7 +410,7 @@ Now write the professional research report following your structure exactly.`,
         stream: true,
       }),
       signal,
-    });
+    }, 90000);
 
     if (!res.ok) {
       const err = await res.text().catch(() => '');
@@ -392,9 +480,105 @@ Now write the professional research report following your structure exactly.`,
     return { markdown: lines.join('\n'), provider: 'local' };
   }
 
+  // ── Verdict enrichment (JSON via the same provider chain) ──
+  // Qualitative lists only — confidence & verdict type stay evidence-derived.
+  async function verdictAnalysis(query, results, settings) {
+    const packed = (results || []).slice(0, 12).map((r, i) =>
+      `[${i + 1}] (${r.source}) ${r.title}\n    ${(r.snippet || '').slice(0, 250)}`
+    ).join('\n\n');
+    const prompt = {
+      system: `You are the verdict analyst of a research system. Given a question and its evidence, you output ONLY valid JSON — no markdown fences, no commentary — in exactly this shape:
+{"answer":"short verdict label like \"Likely Yes\" or \"Unclear\"","reasoningSummary":"2-3 sentence evidence-based reasoning","supportingEvidence":["..."],"contradictingEvidence":["..."],"unknownFactors":["..."],"assumptions":["..."],"whatCouldChangeThis":["..."]}
+
+RULES:
+- Never invent facts. Only summarize the evidence provided.
+- Distinguish facts from speculation. Never claim certainty.
+- 2 to 5 items per list; each item short and specific.
+- If the question is a decision question (buy/invest/worth it/risk/should), also include: "pros":[],"cons":[],"risks":[],"opportunities":[].`,
+      user: `Question: "${query}"\n\nEvidence gathered:\n${packed}\n\nOutput the verdict JSON now.`,
+    };
+    try {
+      const out = await runChain(prompt, settings, { onProgress() {}, onChunk() {} });
+      return parseVerdictJson(out.markdown);
+    } catch {
+      return null;
+    }
+  }
+
+  function parseVerdictJson(text) {
+    if (!text) return null;
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    let obj;
+    try { obj = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+    if (!obj || typeof obj !== 'object') return null;
+    const str = (v, max) => (typeof v === 'string' && v.trim()) ? v.trim().slice(0, max) : null;
+    const arr = v => (Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 140)) : null);
+    const out = {};
+    const a = str(obj.answer, 60); if (a) out.answer = a;
+    const r = str(obj.reasoningSummary, 600); if (r) out.reasoningSummary = r;
+    for (const k of ['supportingEvidence', 'contradictingEvidence', 'unknownFactors', 'assumptions', 'whatCouldChangeThis', 'pros', 'cons', 'risks', 'opportunities']) {
+      const v = arr(obj[k]); if (v && v.length) out[k] = v;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
+  // ── Structured research-plan generation (JSON via the same provider chain) ──
+  // Returns a validated plan object, or null on any failure (caller falls back
+  // to Planner's heuristic plan builder).
+  async function planResearch(query, settings) {
+    const today = new Date().toISOString().slice(0, 10);
+    const prompt = {
+      system: `You are the planning engine of an autonomous research system. Given a user's research question you output ONLY a JSON research plan.
+
+Return STRICTLY valid JSON — no markdown fences, no commentary, no trailing text — in exactly this shape:
+{"intent":"informational|comparative|temporal|navigational|transactional|research","title":"short title","aspects":[{"question":"sub-question","queries":["query 1","query 2"]}]}
+
+RULES:
+- 2 to 4 aspects; each is one distinct angle of the question.
+- Each aspect has 1 to 2 concrete search queries, under 100 characters each.
+- Cover background, current facts/data, and recent developments; add a perspectives aspect for contested topics.
+- For comparisons ("X vs Y") use one aspect per side plus a direct-comparison aspect.
+- intent must be one of the six allowed values.`,
+      user: `Today's date: ${today}\n\nUser's research question: "${query}"\n\nOutput the JSON research plan now.`,
+    };
+    try {
+      const out = await runChain(prompt, settings, { onProgress() {}, onChunk() {} });
+      return parsePlanJson(out.markdown);
+    } catch {
+      return null;
+    }
+  }
+
+  // Tolerant JSON extraction from whatever the model actually returned.
+  function parsePlanJson(text) {
+    if (!text) return null;
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    let obj;
+    try { obj = JSON.parse(text.slice(start, end + 1)); } catch { return null; }
+    const VALID_INTENTS = ['informational', 'comparative', 'temporal', 'navigational', 'transactional', 'research'];
+    const aspects = Array.isArray(obj.aspects)
+      ? obj.aspects
+          .filter(a => a && typeof a.question === 'string' && Array.isArray(a.queries) && a.queries.length)
+          .map(a => ({ question: a.question.trim().slice(0, 140), queries: a.queries.filter(q => typeof q === 'string' && q.trim()).map(q => q.trim().slice(0, 120)) }))
+          .slice(0, 4)
+      : [];
+    if (aspects.length < 2) return null;
+    return {
+      intent: VALID_INTENTS.includes(obj.intent) ? obj.intent : 'informational',
+      title: typeof obj.title === 'string' ? obj.title.trim().slice(0, 140) : 'Research plan',
+      aspects,
+    };
+  }
+
   // ── Orchestrator ──
-  async function generate(query, results, settings, handlers, signal, fullContent) {
-    const prompt = buildPrompt(query, results, fullContent);
+  async function generate(query, results, settings, handlers, signal, fullContent, plan, evidence) {
+    const prompt = (plan && Array.isArray(plan.aspects) && plan.aspects.length)
+      ? buildPlannedPrompt(query, plan, results, fullContent, evidence)
+      : buildPrompt(query, results, fullContent);
     try {
       return await runChain(prompt, settings, handlers, signal);
     } catch (e) {
@@ -445,5 +629,5 @@ Now write the professional research report following your structure exactly.`,
     throw new Error(errors.join(' | ') || 'All providers failed');
   }
 
-  return { generate, chat, buildPrompt, buildChatPrompt, localChatReply, localSynthesis, PROGRESS };
+  return { generate, chat, buildPrompt, buildPlannedPrompt, planResearch, parsePlanJson, verdictAnalysis, parseVerdictJson, buildChatPrompt, localChatReply, localSynthesis, PROGRESS };
 })();

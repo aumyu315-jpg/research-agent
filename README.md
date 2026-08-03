@@ -10,7 +10,9 @@ Search the web across **news, articles, papers & reference sources**, then get a
 - 🔎 **10-source live search** — Wikipedia, Hacker News, **keyless web search (SearXNG → DuckDuckGo, optional Brave)**, OpenAlex + Crossref academic papers, Wikinews + (optional) GNews news, **OpenLibrary books**, **Stack Overflow Q&A**, **GitHub code & repos**, **CoinGecko live market prices**, and **Open-Meteo live weather**. Every source verified CORS-enabled & free (no keys needed for most).
 - 📰 **Live News mode** — a full daily-news section with **34 countries**, six categories (Top, World, Tech, Business, Science, Sports), topic search, a live **markets & weather ticker**, and an **AI chat** panel for follow-up questions. The **AI Summary** button turns the current feed into a full AI research report.
 - 🎧 **Listen (TTS)** — every news card, search result and AI report can be **read aloud** in your browser (Web Speech API — zero keys, zero cost). For news & results, Listen **scrapes the full article from the publisher's site, writes an elegant AI summary, and narrates that** — a complete, polished briefing instead of raw scraped text (falls back gracefully if the backend is down). The persistent player bar offers voice + speed controls. See `TTS-STRATEGY.md`.
+- 🗣️ **News Anchor narration** — Aurora presents every story like a professional news anchor (never raw TTS): content intelligence strips adverts & boilerplate, story-type tone adaptation (breaking/politics/finance/tech/science…), a **Briefing (~60–120s) vs Deep Dive** toggle, dynamic transitions, a pronunciation dictionary (NVIDIA, TSMC, Bhubaneswar…), and **chaptered scripts** with a live section timeline + skip in the player, plus 👍/👎 feedback. Popular articles pre-warm so they play instantly. See `TTS-STRATEGY.md` §8.
 - 🗣️ **Free neural narrator** — pick a natural neural voice (Microsoft Edge TTS, keyless & free) and Aurora reads news, articles & reports aloud through the serverless `/api/tts` endpoint (sha1 audio caching). Falls back to your browser's voices automatically if the backend is unreachable.
+- 🧠 **Autonomous Research Planner** — the *Deep Research* button turns any question into a planned investigation: intent classification (informational / comparative / temporal / navigational / transactional / research), sub-question decomposition (AI-first, heuristic fallback), **parallel searches across plan aspects**, knowledge-gap detection with targeted second-round searches, and cross-source evidence scoring (consensus / single-source claims / contradictions → confidence %). Every report includes a **Research Process** panel (queries run, sources consulted, confidence, known uncertainties) and each source shows a **trust tier** chip (🟢 T1 authority → 🔴 T4 user content). Enable **Deep Research by default** for AI reports in Settings.
 - 🤖 **Free AI reports** — automatic provider fallback chain: keyless **Pollinations.ai** → optional **Google Gemini**, **Groq** (generous free tier, blazing-fast Llama) or **OpenRouter** free models → guaranteed local smart-summary (works even fully offline). Comprehensive **1200–2000 word** executive-grade reports built from full article text (up to 12 articles read server-side), with source discipline and quantified analysis.
 - 📄 **Beautiful markdown reports** — streaming generation with live progress steps, inline `[n]` citations, key findings, analysis & sources.
 - 💾 **Offline library** — every report is auto-saved to IndexedDB. Browse, search, open, export or delete reports **even without internet**.
@@ -97,9 +99,13 @@ js/storage.js           IndexedDB report store + localStorage settings
 js/search.js            10-source search engine + live news (countries, categories, ticker) — CORS-verified
 js/content.js           Client for the serverless full-content reader
 js/ai.js                AI providers: Pollinations, Gemini, Groq, OpenRouter + local fallback
-js/tts.js               Text-to-speech engine: Web Speech API + free neural narrator (Edge TTS via /api/tts)
+js/trust.js             Source trust tiers (T1–T4) + credibility scoring
+js/planner.js           Autonomous research planner: intent, plan, parallel search, gaps, evidence
+js/tts.js               Text-to-speech engine: Web Speech API + free neural narrator (Edge TTS via /api/tts) + chaptered script queue
+js/anchor.js            Anchor narration engine: content intelligence, story-type detection, pronunciation, narrative construction, feedback/store, AI-assisted scripts
 js/fx.js                Ambient FX canvas — constellation/particle background
 test-tts.js             TTS chunking, sanitization & narrator-config unit tests
+test-anchor.js          Anchor narration unit tests (29 tests)
 js/app.js               App controller — routing, search, news, chat, report gen, library, TTS wiring
 netlify/functions/aurora.js   Serverless: article fetcher/extractor + keyless web search (SearXNG → DDG, optional Brave) + RSS news feeds + free Edge TTS narrator
 netlify.toml            Functions routing (/api/*)
@@ -108,6 +114,7 @@ test-markdown.js        Markdown renderer unit tests
 test-content.js         Article extractor unit tests
 test-ai.js              AI prompt & synthesis unit tests
 test-search.js          Search engine & type-detection unit tests
+test-planner.js         Research planner + trust-tier unit tests
 ```
 
 ## 📋 Notes

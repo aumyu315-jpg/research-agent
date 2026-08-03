@@ -116,6 +116,33 @@
 - **Phase 2 — AI-summarized article narration (SHIPPED):** Listen on a news story or result now **scrapes the full article from the publisher's site, writes an elegant spoken-word summary, and narrates that** — a complete briefing instead of raw scraped text. New `POST /api/summarize` endpoint: fetch → extract → keyless Pollinations summary (natural prose, no markdown, 200–350 words) → extractive fallback → 1h cache. The headline plays instantly for feedback, the summary appends seamlessly (or starts its own track if the headline already finished). Also enables **"Listen to this report"** for AI research reports (fully Aurora-owned content) — and Library cards now have their own Listen button.
 - **Phase 3 — Free neural narrator (SHIPPED):** `/api/tts` + `/api/tts/voices` + `/api/tts/status` serverless endpoints using **Microsoft Edge TTS** (`edge-tts-universal`) — keyless, natural neural voices, sha1 audio caching (24h), Settings UI (free voice picker + test), graceful Web Speech fallback whenever the backend is unavailable. Voice engine preference lives in `js/tts.js` (`setNarrator` / `narratorEnabled`).
 - **Phase 4 — Comprehensive AI reports (SHIPPED):** report prompt now targets **1200–2000 words**, feeds up to 30 results (full article text for the top ~12), and raises output caps (Gemini 8192, Groq 8192 tokens) so the Executive Summary → Key Facts → Analysis → Outlook brief is substantial, not a blurb.
+- **Phase 5 — News Anchor narration (SHIPPED):** Aurora now presents every story like a professional news anchor — it **never reads raw text**. The new `js/anchor.js` engine runs a full broadcast pipeline: content intelligence (strips adverts/newsletter boxes/"Image 1"/"Related stories" boilerplate), story-type detection (breaking/politics/finance/tech/science/human interest/sports/investigation) with per-type tone, narrative construction (opening → main story → key facts → context → implications → closing with non-repeating transitions), a **Briefing vs Deep Dive** mode toggle, a **pronunciation dictionary** (NVIDIA, TSMC, OpenAI, Bhubaneswar, $/%/°C expansion, acronyms), and **chaptered scripts** so the player shows a live section timeline with skip between sections. Reports are split into chapters from their markdown headings (fully Aurora-owned content). The player adds mode switching, chapter prev/next + visual timeline dots, and 👍/👎 + issue reporting (quality loop stored locally). The top story's briefing is pre-warmed silently so popular articles play instantly. Full graceful fallback chain: neural Edge narrator → Web Speech → headline line. See §8.
+
+---
+
+## 8. News Anchor Narration System (Phase 5)
+
+**Pipeline (all client-side, deterministic, offline-safe):**
+
+```text
+Article/Report
+  → Content Intelligence (boilerplate strip, story-type detect)
+  → Narrative Construction (briefing | deep dive, tone, transitions)
+  → Anchor Script (chaptered, pronounced)
+  → Neural Voice Synthesis (free Edge TTS via /api/tts, sha1-cached)
+  → Chapter-aware Player (timeline, skip, mode, feedback)
+```
+
+**Files touched (this change):**
+- `js/anchor.js` (new) — story-type detection, boilerplate stripping, pronunciation dictionary, `buildScript` (briefing/deep dive), `reportChapters` (markdown → broadcast sections), `instantBriefing`, feedback + quality-loop store (`aurora-narration-feedback`, `aurora-narration-metrics`).
+- `js/tts.js` — chapter-aware queue: `speakScript`, `skipScript`, `jumpChapter`, `onChapter` callback, chapter info in `state()`; neural requests now carry pitch.
+- `netlify/functions/aurora.js` — `/api/tts` accepts optional `pitch` (voice-profile energy, Edge Hz offset).
+- `js/app.js` — listen flows build anchor scripts (news/results/reports/library), live Briefing/Deep-dive mode switching, chapter timeline UI, feedback handlers, top-story pre-warming, listen-session metrics.
+- `index.html` / `css/styles.css` — player mode toggle, chapter dots + skip buttons, feedback menu, narration-mode setting, new icons.
+- `sw.js` — app shell includes `js/anchor.js` (cache v7).
+- `test-anchor.js` — 27 unit tests (detection, boilerplate, pronunciation, script structure, chapters, feedback).
+
+**Design constraints honored:** never read article HTML verbatim (always restructured); attribution always announced; feedback/metrics stay in the user's browser (privacy-safe); free-first stack kept (Edge TTS neural narrator + Web Speech fallback — no paid keys).
 
 ---
 
@@ -124,6 +151,35 @@
 - `index.html` — sprite icons, listen buttons, player bar, report listen, narrator settings group, FX canvas.
 - `css/styles.css` — player bar, listen buttons, equalizer, narrator settings, futuristic glass hero stage.
 - `js/app.js` — wiring: cards, results, report, player controls, narrator voice picker/test, FX init.
-- `netlify/functions/aurora.js` — `/api/tts`, `/api/tts/voices`, `/api/tts/status` (Edge TTS, keyless, cached) + `edge-tts-universal` dep.
+- `netlify/functions/aurora.js` — `/api/tts`, `/api/tts/voices`, `/api/tts/status` (Edge TTS, keyles## 4. Anchor Narration System (Phase 4 — implemented)
+
+Status: **Complete** — deployed as the primary narration pipeline.
+
+| Pipeline Layer | Implementation | Status |
+|---|---|---|
+| Content Intelligence | `Anchor.stripBoilerplate()` — removes adverts, widgets, boilerplate labels, URLs, social handles | ✅ |
+| Story Type Detection | `Anchor.detectStoryType()` — breaking/politics/finance/tech/science/human-interest/sports/investigation + per-type openings/closings | ✅ |
+| Narrative Construction | `Anchor.buildScript()` — built from lead sentences, key facts, voices/analysis, context, closing | ✅ |
+| AI-Assisted Generation | `Anchor.buildAiScript()` — uses AI provider chain for better phrasing, falls back to heuristic | ✅ |
+| Pronunciation Engine | `Anchor.pronounce()` — curated spelling-substitution dictionary (NVIDIA, TSMC, OpenAI, Anthropic, $, %, °C, acronyms). Applied client-side BEFORE synthesis, so both the neural narrator AND Web Speech read names correctly. (Edge TTS takes no raw SSML — `edge-tts-universal` escapes input text, so `<phoneme>` tags would be spoken literally — the client-side dictionary is the correct layer.) | ✅ |
+| Chaptered Scripts | `TTS.speakScript()` — tagged chapters, skip/jump, live `onChapter` callback, absolute chapter indexing | ✅ |
+| Briefing / Deep Dive | Segmented toggle in player bar, configurable default in Settings | ✅ |
+| Report Chapters | `Anchor.reportChapters()` — split markdown by headings into narrated sections | ✅ |
+| Feedback Loop | 👍/👎 + issue reporting (mispronunciation, phrasing, emphasis, summary, pacing) + session metrics | ✅ |
+| Quality Dashboard | Listen-session metrics (completion rate, avg time, mode mix, feedback count) in Settings | ✅ |
+| Client-side Phonetic Text | `Anchor.pronounce()` rewrites tricky names into phonetic spellings before `/api/tts` — the server simply synthesizes clean spoken text | ✅ |
+
+### Files
+- `js/anchor.js` (new) — Anchor narration engine: content intelligence, narrative construction, pronunciation dictionary, report chapters, feedback store, quality learning loop, AI-assisted script generation.
+- `js/tts.js` — extended with `speakScript()`, `skipScript()`, `jumpChapter()`, `onChapter` callback, pitch passthrough.
+- `netlify/functions/aurora.js` — optional pitch param (voice-profile energy) for `/api/tts`; pronunciation handled client-side.
+- `js/app.js` — wired listen flows (news, results, reports, library) with anchor scripts, mode switching, chapter timeline, feedback, warm-top-story pre-generation, session metrics.
+- `index.html` — player bar: mode toggle, chapter nav, visual timeline dots, feedback menu.
+- `css/styles.css` — player bar styles (modes, chapters, feedback, quality dashboard).
+- `test-anchor.js` (new) — 29 unit tests for the anchor engine.
+
+---
+
+s, cached) + `edge-tts-universal` dep.
 - `js/fx.js` (new) — ambient constellation canvas background.
 - `sw.js`, `README.md`, `package.json`, `test-tts.js`, `test-content.js` — cache, docs, tests.

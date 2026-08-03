@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Aurora — AI Research Studio</title>
   <meta name="description" content="Search the web across news, articles and papers, and get a beautifully organized AI research report. Works offline with your saved library." />
-  <meta name="theme-color" content="#070b18" />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='.5' stop-color='%23a855f7'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23g)'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23070b18'/%3E%3Cpath d='M32 16l4 9 9 4-9 4-4 9-4-9-9-4 9-4z' fill='%23fff'/%3E%3C/svg%3E" />
+  <meta name="theme-color" content="#060a14" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%232fe6a3'/%3E%3Cstop offset='.45' stop-color='%238b7cff'/%3E%3Cstop offset='1' stop-color='%23ff5da2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='28' fill='url(%23g)'/%3E%3Ccircle cx='32' cy='32' r='12' fill='%23060a14'/%3E%3Cpath d='M32 16l4 9 9 4-9 4-4 9-4-9-9-4 9-4z' fill='%23fff'/%3E%3C/svg%3E" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,SOFT,WONK,wght@0,9..144,0..100,0..1,300..700;1,9..144,0..100,0..1,300..700&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
 </head>
 <body>
@@ -47,12 +47,16 @@
     <symbol id="i-weather" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></symbol>
     <symbol id="i-live" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/></symbol>
     <symbol id="i-briefing" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-4"/><path d="M9.5 15.5h5"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/><path d="M12 4v3"/><path d="M12 17v3"/><path d="M4 12h3"/><path d="M17 12h3"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
     <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l14 8-14 8z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14"/><path d="M16 5v14"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5"/><path d="M18 17l-5-5 5-5"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 17 5-5-5-5"/><path d="M6 17l5-5-5-5"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></symbol>
   </svg>
 
   <!-- ═══════════ OFFLINE BANNER ═══════════ -->
@@ -186,9 +190,10 @@
     <!-- ═══════════ RESEARCH VIEW (full reports) ═══════════ -->
     <section class="view view-home" id="view-research" data-view-panel hidden>
       <div class="hero-bg" aria-hidden="true">
-        <div class="blob blob-1"></div>
-        <div class="blob blob-2"></div>
-        <div class="blob blob-3"></div>
+        <div class="aurora aurora-1"></div>
+        <div class="aurora aurora-2"></div>
+        <div class="aurora aurora-3"></div>
+        <div class="aurora-ribbon"></div>
         <div class="grid-overlay"></div>
       </div>
 
@@ -215,9 +220,18 @@
               <div class="suggestions" id="suggestions" hidden></div>
             </div>
             <div class="search-hints">
-              <kbd>↵</kbd> to search &nbsp;·&nbsp; <kbd>/</kbd> focus search &nbsp;·&nbsp; then <kbd>✨ Generate report</kbd>
+              <kbd>↵</kbd> to search &nbsp;·&nbsp; <kbd>/</kbd> focus search &nbsp;·&nbsp; <kbd>✨ Generate report</kbd>
             </div>
           </form>
+
+          <div class="deep-actions">
+            <button class="btn btn-primary btn-deep" id="deepResearchBtn" type="button">
+              <svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg>
+              <span>Deep Research</span>
+              <span class="deep-badge">autonomous</span>
+            </button>
+            <p class="deep-hint">Plans first, runs parallel searches, finds knowledge gaps — then writes a fully-cited, transparent report.</p>
+          </div>
 
           <div class="trending" id="trending">
             <span class="trending-label"><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg> Trending</span>
@@ -253,7 +267,7 @@
           <div class="fx-panel fx-panel-line">
             <span class="fx-panel-label">Insight velocity</span>
             <svg class="fx-line" viewBox="0 0 120 44" preserveAspectRatio="none"><path d="M0 36 C 14 34, 20 26, 30 28 S 48 14, 58 18 S 76 6, 88 10 S 108 2, 120 6" fill="none" stroke="url(#fxgrad1)" stroke-width="2"/></svg>
-            <svg width="0" height="0" style="position:absolute"><defs><linearGradient id="fxgrad1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6366f1"/><stop offset=".5" stop-color="#a855f7"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs></svg>
+            <svg width="0" height="0" style="position:absolute"><defs><linearGradient id="fxgrad1" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2fe6a3"/><stop offset=".5" stop-color="#8b7cff"/><stop offset="1" stop-color="#ff5da2"/></linearGradient></defs></svg>
           </div>
 
           <div class="fx-panel fx-panel-bars">
@@ -263,7 +277,7 @@
 
           <div class="fx-panel fx-panel-growth">
             <span class="fx-panel-label">AI Market Growth 2030 – 2035</span>
-            <svg class="fx-line" viewBox="0 0 120 44" preserveAspectRatio="none"><path d="M0 40 C 10 38, 18 34, 28 34 S 44 26, 54 26 S 70 16, 80 18 S 104 6, 120 4" fill="none" stroke="#22d3ee" stroke-width="2"/><path d="M0 42 C 12 40, 22 36, 34 36 S 52 30, 64 30 S 86 22, 120 18" fill="none" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
+            <svg class="fx-line" viewBox="0 0 120 44" preserveAspectRatio="none"><path d="M0 40 C 10 38, 18 34, 28 34 S 44 26, 54 26 S 70 16, 80 18 S 104 6, 120 4" fill="none" stroke="#3fd8c9" stroke-width="2"/><path d="M0 42 C 12 40, 22 36, 34 36 S 52 30, 64 30 S 86 22, 120 18" fill="none" stroke="#ff5da2" stroke-width="1.5" stroke-dasharray="4 3"/></svg>
           </div>
 
           <div class="fx-panel fx-panel-brain">
@@ -292,6 +306,21 @@
           <svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg>
           <span>Generate AI report</span>
         </button>
+      </div>
+
+      <!-- Autonomous research planner panel (shown while planning + searching) -->
+      <div class="research-plan-panel" id="researchPlanPanel" hidden>
+        <div class="rp-head">
+          <div class="rp-head-left">
+            <span class="rp-kicker"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg> Autonomous research planner</span>
+            <h3 class="rp-title" id="rpTitle">Planning research…</h3>
+            <span class="rp-intent" id="rpIntent" hidden></span>
+          </div>
+          <span class="rp-status" id="rpStatus">Planning…</span>
+        </div>
+        <div class="rp-progress"><div class="rp-progress-fill" id="rpProgressFill"></div></div>
+        <ol class="rp-aspects" id="rpAspects"></ol>
+        <div class="rp-stats" id="rpStats" hidden></div>
       </div>
 
       <div class="source-tabs" id="sourceTabs" role="tablist"></div>
@@ -353,6 +382,12 @@
       <div class="report-sources" id="reportSources" hidden>
         <h3>Sources consulted</h3>
         <div class="report-sources-list" id="reportSourcesList"></div>
+      </div>
+
+      <!-- Research process transparency (from the autonomous planner) -->
+      <div class="research-process" id="researchProcessPanel" hidden>
+        <h3 class="rp2-title"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg> Research process</h3>
+        <div class="rp2-body" id="researchProcessBody"></div>
       </div>
 
       <div class="report-saved-banner" id="savedBanner" hidden>
@@ -504,6 +539,36 @@
         </section>
 
         <section class="set-group">
+          <h4>Research Planner <span class="pill-free">Autonomous</span></h4>
+          <p class="set-hint">Before writing, Aurora plans the research — sub-questions, parallel searches, knowledge-gap detection — then reports with trust tiers, evidence confidence and a full research-process summary.</p>
+          <div class="set-row"><label class="toggle-row" for="deepResearch"><span>Deep Research by default for AI reports</span><span class="toggle"><input type="checkbox" id="deepResearch" /><span class="track"></span></span></label></div>
+        </section>
+
+        <section class="set-group">
+          <h4>Narration mode <span class="pill-free">Anchor</span></h4>
+          <p class="set-hint">Aurora presents each story like a news anchor — never reads raw text. <b>Briefing</b> = headline, key facts, wrap-up (~60–120s). <b>Deep dive</b> = full broadcast structure with context and analysis. Switch live from the player bar.</p>
+          <div class="set-row">
+            <span class="set-label">Default style</span>
+            <div class="mode-pick" id="narrationModePick">
+              <label class="mode-pick-opt"><input type="radio" name="narrationMode" value="briefing" /><span>Briefing <small>60–120s</small></span></label>
+              <label class="mode-pick-opt"><input type="radio" name="narrationMode" value="deep" /><span>Deep dive <small>full analysis</small></span></label>
+            </div>
+          </div>
+        </section>
+
+        <section class="set-group">
+          <h4>Narration quality <span class="pill-free">Local</span></h4>
+          <p class="set-hint">Listen-session metrics and feedback — privacy-safe, stored only in your browser.</p>
+          <div class="narration-metrics" id="narrationMetrics">
+            <div class="nm-cell"><b class="nm-num" id="nmSessions">—</b><span class="nm-label">Sessions</span></div>
+            <div class="nm-cell"><b class="nm-num" id="nmCompletion">—</b><span class="nm-label">Complete rate</span></div>
+            <div class="nm-cell"><b class="nm-num" id="nmAvgTime">—</b><span class="nm-label">Avg listen</span></div>
+            <div class="nm-cell"><b class="nm-num" id="nmThumbsUp">—</b><span class="nm-label">👍 Feedback</span></div>
+            <div class="nm-cell nm-wide"><span class="nm-label" id="nmModeMix"></span></div>
+          </div>
+        </section>
+
+        <section class="set-group">
           <h4>Narrator voice <span class="pill-free">Free · no key</span></h4>
           <p class="set-hint">Aurora reads news &amp; reports aloud with a <b>natural neural voice</b> — powered by Microsoft Edge TTS, completely free with no API key. Pick a voice, then hit <b>Test voice</b>.</p>
           <div class="set-row">
@@ -538,15 +603,16 @@
     </div>
   </div>
 
-  <!-- ═══════════ AUDIO PLAYER BAR ═══════════ -->
+  <!-- ═══════════ AUDIO PLAYER BAR (anchor narration) ═══════════ -->
   <div class="tts-player" id="ttsPlayer" role="region" aria-label="Audio player" hidden>
     <div class="tts-eq" aria-hidden="true">
       <span></span><span></span><span></span><span></span><span></span>
-    </div>      <div class="tts-info">
-        <span class="tts-now" id="ttsNow">Now listening</span>
-        <span class="tts-title" id="ttsTitle" aria-live="polite"></span>
-        <span class="tts-note">Free neural narration (Edge TTS) · not affiliated with publishers</span>
-      </div>
+    </div>
+    <div class="tts-info">
+      <span class="tts-now" id="ttsNow">Now listening</span>
+      <span class="tts-title" id="ttsTitle" aria-live="polite"></span>
+      <span class="tts-note">Anchor narration · free neural voice (Edge TTS) · not affiliated with publishers</span>
+    </div>
     <div class="tts-controls">
       <button class="icon-btn" id="ttsPauseBtn" aria-label="Pause" title="Pause">
         <svg class="ic" aria-hidden="true"><use href="#i-pause"/></svg>
@@ -571,6 +637,34 @@
         </select>
       </label>
     </div>
+
+    <!-- line 2: narration mode + chapter timeline + feedback -->
+    <div class="tts-line2">
+      <div class="tts-modes" id="ttsModes" role="group" aria-label="Narration mode">
+        <button class="tts-mode-btn" data-mode="briefing" title="Quick briefing — headline, key facts, wrap-up">Briefing</button>
+        <button class="tts-mode-btn" data-mode="deep" title="Deep dive — full broadcast structure with context">Deep dive</button>
+      </div>
+      <button class="icon-btn tts-chap-btn" id="ttsPrevCh" aria-label="Previous section" title="Previous section">
+        <svg class="ic" aria-hidden="true"><use href="#i-prev"/></svg>
+      </button>
+      <div class="tts-chapters" id="ttsChapters" aria-label="Sections" hidden></div>
+      <span class="tts-chap-name" id="ttsChapName"></span>
+      <button class="icon-btn tts-chap-btn" id="ttsNextCh" aria-label="Next section" title="Next section">
+        <svg class="ic" aria-hidden="true"><use href="#i-next"/></svg>
+      </button>
+      <div class="tts-feedback">
+        <button class="tts-fb" id="ttsHelpful" title="This narration was helpful" aria-label="Helpful">👍</button>
+        <button class="tts-fb" id="ttsNotHelpful" title="This narration was not helpful" aria-label="Not helpful">👎</button>
+        <button class="tts-fb" id="ttsIssue" title="Report an issue" aria-label="Report an issue"><svg class="ic" aria-hidden="true"><use href="#i-flag"/></svg></button>
+        <div class="tts-issue-menu" id="ttsIssueMenu" hidden>
+          <button data-issue="Mispronunciation">Mispronunciation</button>
+          <button data-issue="Awkward phrasing">Awkward phrasing</button>
+          <button data-issue="Wrong emphasis">Wrong emphasis</button>
+          <button data-issue="Incorrect summary">Incorrect summary</button>
+          <button data-issue="Poor pacing">Poor pacing</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="toast-wrap" id="toastWrap"></div>
@@ -583,6 +677,9 @@
   <script src="js/content.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/tts.js"></script>
+  <script src="js/trust.js"></script>
+  <script src="js/planner.js"></script>
+  <script src="js/anchor.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

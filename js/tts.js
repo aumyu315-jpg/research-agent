@@ -23,13 +23,18 @@ const TTS = (() => {
   let synthCtrl = null;        // AbortController for in-flight synthesis
 
   // ── Web Speech state ──
-  let queue = [];              // [{ text, markdown }] chunks pending
+  let queue = [];              // [{ text, ch }] chunks pending (ch = chapter index)
   let playing = false;
   let paused = false;
   let cancelled = false;
   let current = null;          // { title, onStateChange }
   let synth = null;
   let audio = null;            // lazy <audio> element for neural playback
+
+  // ── chapter-aware scripts (anchor briefings) ──
+  let scriptChapters = null;   // [{ title, text }]
+  let scriptIdx = 0;           // current chapter index
+  let onChapter = null;        // fired when the active chapter changes
 
   function supported() {
     return typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -155,6 +160,10 @@ const TTS = (() => {
       return;
     }
     const item = queue.shift();
+    if (item.ch !== undefined && item.ch !== scriptIdx && onChapter) {
+      scriptIdx = item.ch;
+      onChapter(scriptIdx);
+    }
     const utter = new SpeechSynthesisUtterance(item.text);
     const v = defaultVoice();
     if (v) { utter.voice = v; utter.lang = v.lang || 'en-US'; }
@@ -185,7 +194,7 @@ const TTS = (() => {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: narrator.voice, speed: settings.rate || 1 }),
+        body: JSON.stringify({ text, voice: narrator.voice, speed: settings.rate || 1, pitch: settings.pitch || 1 }),
         signal: synthCtrl.signal,
       });
       if (!res.ok) throw new Error(`TTS ${res.status}`);
@@ -219,14 +228,18 @@ const TTS = (() => {
       while (neuralQueue.length && !neuralCancelled) {
         if (neuralPaused) { await new Promise(r => setTimeout(r, 150)); continue; }
         const chunk = neuralQueue.shift();
+        if (chunk && chunk.ch !== undefined && chunk.ch !== scriptIdx && onChapter) {
+          scriptIdx = chunk.ch;
+          onChapter(scriptIdx);
+        }
         try {
-          const blob = await synthChunk(chunk);
+          const blob = await synthChunk(chunk.text || chunk);
           if (neuralCancelled) continue;
           await playAudioBlob(blob);
         } catch (e) {
           if (e.name === 'AbortError' || neuralCancelled) break;
           // neural path failed (no backend / quota / network) — fall back to Web Speech
-          fallbackNeural(chunk);
+          fallbackNeural(chunk.text || chunk);
           break;
         }
       }
@@ -241,6 +254,9 @@ const TTS = (() => {
     if (!supported()) { finishNeural(); return; }
     const rest = [firstChunk, ...neuralQueue].join(' ');
     neuralQueue = [];
+    scriptChapters = null; // a plain fallback track has no chapter structure
+    scriptIdx = 0;
+    onChapter = null;
     if (rest.trim()) {
       cancel();
       speakWeb(rest, { title: current ? current.title : '', onStateChange: current ? current.onStateChange : null });
@@ -298,14 +314,75 @@ const TTS = (() => {
     const chunks = chunkText(String(text || ''), neuralEngine ? NEURAL_CHUNK_MAX : CHUNK_MAX);
     if (!chunks.length) return false;
     if (neuralEngine && narratorEnabled()) {
-      neuralQueue.push(...chunks);
+      neuralQueue.push(...chunks.map(t => ({ text: t, ch: scriptIdx })));
       if (!neuralSynth) pumpNeural();
       return true;
     }
     if (!supported() || cancelled) return false;
-    queue.push(...chunks.map(t => ({ text: t })));
+    queue.push(...chunks.map(t => ({ text: t, ch: scriptIdx })));
     if (!playing && !paused) speakNext();
     return true;
+  }
+
+  // ── Chapter-aware scripts (anchor briefings / deep dives) ──
+  // Queue tagged chunks so the player can show a live chapter timeline and
+  // skip between sections without ever reading an article verbatim.
+  function startScript(list, startIdx, opts = {}) {
+    if (!list || !list.length) return false;
+    const useNeural = narratorEnabled();
+    if (!useNeural && !supported()) return false;
+    // tag chunks with ABSOLUTE chapter indices so skip/jump keep the timeline honest
+    const chunks = [];
+    list.forEach((c, i) => {
+      const text = String(c && c.text || '').trim();
+      if (!text) return;
+      chunkText(text, useNeural ? NEURAL_CHUNK_MAX : CHUNK_MAX).forEach(t => chunks.push({ text: t, ch: i + startIdx }));
+    });
+    if (!chunks.length) return false;
+
+    cancel();
+    scriptChapters = list;
+    scriptIdx = startIdx;
+    onChapter = opts.onChapter || null;
+
+    if (useNeural) {
+      neuralCancelled = false;
+      neuralPaused = false;
+      neuralEngine = true;
+      neuralQueue = chunks;
+    } else {
+      cancelled = false;
+      paused = false;
+      queue = chunks;
+    }
+    current = { title: opts.title || '', onStateChange: opts.onStateChange || null };
+    notify('start');
+    if (useNeural) pumpNeural(); else speakNext();
+    if (onChapter) onChapter(startIdx); // announce the first chapter immediately
+    return true;
+  }
+
+  // Speak a full chaptered script from the top (anchor briefing / deep dive)
+  function speakScript(chapters, opts = {}) {
+    return startScript(chapters || [], 0, opts);
+  }
+
+  // Move to the previous/next chapter of the active script (restarts at its start)
+  function skipScript(dir) {
+    if (!scriptChapters || !scriptChapters.length) return false;
+    const next = Math.min(Math.max(scriptIdx + (dir || 0), 0), scriptChapters.length - 1);
+    if (next === scriptIdx) return false;
+    const opts = { title: current ? current.title : '', onStateChange: current ? current.onStateChange : null };
+    return startScript(scriptChapters, next, { ...opts, onChapter });
+  }
+
+  // Jump straight to a chapter by absolute index
+  function jumpChapter(idx) {
+    if (!scriptChapters || !scriptChapters.length) return false;
+    const next = Math.min(Math.max(idx || 0, 0), scriptChapters.length - 1);
+    if (next === scriptIdx) return false;
+    const opts = { title: current ? current.title : '', onStateChange: current ? current.onStateChange : null };
+    return startScript(scriptChapters, next, { ...opts, onChapter });
   }
 
   function pause() {
@@ -363,7 +440,13 @@ const TTS = (() => {
   }
 
   function state() {
-    if (current) return { title: current.title, playing: neuralEngine ? (neuralQueue.length > 0 || neuralSynth) : playing, paused: neuralEngine ? neuralPaused : paused };
+    if (current) return {
+      title: current.title,
+      playing: neuralEngine ? (neuralQueue.length > 0 || neuralSynth) : playing,
+      paused: neuralEngine ? neuralPaused : paused,
+      chapter: scriptChapters ? scriptIdx : null,
+      chapters: scriptChapters ? scriptChapters.length : 0,
+    };
     return null;
   }
 
@@ -381,6 +464,7 @@ const TTS = (() => {
 
   return {
     supported, init, speak, speakNeural, speakWeb, append, pause, resume, stop, cancel,
+    speakScript, skipScript, jumpChapter,
     voices, defaultVoice, setSettings, getSettings: () => ({ ...settings }),
     setNarrator, narratorConfig, narratorEnabled,
     cleanText, chunkText, state,

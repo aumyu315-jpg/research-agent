@@ -30,7 +30,7 @@ const FX = (() => {
       x: rand(0, W), y: rand(0, H),
       vx: rand(-SPEED, SPEED), vy: rand(-SPEED, SPEED),
       r: rand(1, 2.4),
-      hue: Math.random() < 0.5 ? 250 : 190, // violet | cyan
+      hue: Math.random() < 0.5 ? 155 : 322, // aurora green | magenta
     }));
     sparks = Array.from({ length: SPARKS }, () => ({
       x: rand(0, W), y: rand(0, H),
@@ -64,7 +64,7 @@ const FX = (() => {
         const d2 = dx * dx + dy * dy;
         if (d2 < LINK * LINK) {
           const alpha = (1 - Math.sqrt(d2) / LINK) * 0.16;
-          ctx.strokeStyle = `rgba(140,150,255,${alpha.toFixed(3)})`;
+          ctx.strokeStyle = `rgba(150,170,255,${alpha.toFixed(3)})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
@@ -80,9 +80,9 @@ const FX = (() => {
       if (n.x < 0 || n.x > W) n.vx *= -1;
       if (n.y < 0 || n.y > H) n.vy *= -1;
       const glow = 0.5 + 0.5 * Math.sin(t / 900 + n.r * 7);
-      ctx.fillStyle = n.hue === 250
-        ? `rgba(168,85,247,${(0.5 + 0.4 * glow).toFixed(3)})`
-        : `rgba(34,211,238,${(0.45 + 0.4 * glow).toFixed(3)})`;
+      ctx.fillStyle = n.hue === 155
+        ? `rgba(47,230,163,${(0.5 + 0.4 * glow).toFixed(3)})`
+        : `rgba(255,93,162,${(0.45 + 0.4 * glow).toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
       ctx.fill();
@@ -97,7 +97,7 @@ const FX = (() => {
         s.vx = rand(-0.08, 0.08); s.vy = rand(-0.16, -0.04);
       }
       const a = Math.sin(s.life * Math.PI) * 0.5;
-      ctx.fillStyle = `rgba(190,200,255,${a.toFixed(3)})`;
+      ctx.fillStyle = `rgba(200,215,255,${a.toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();

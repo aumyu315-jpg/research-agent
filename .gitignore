@@ -2,3 +2,8 @@ node_modules/
 .netlify/
 *.log
 .DS_Store
+
+# AI assistant tooling (not part of the app)
+.agents/
+.claude/
+skills-lock.json

@@ -324,9 +324,25 @@ function edgeRate(speed) {
   return `${pct >= 0 ? '+' : ''}${pct}%`;
 }
 
-// Free neural synthesis via Microsoft Edge TTS (no API key required)
-async function edgeTts(text, voice, speed) {
-  const t = new EdgeTTS(String(text || '').slice(0, 5000), voice || TTS_DEFAULT_VOICE, { rate: edgeRate(speed) });
+// Map a pitch profile (0.5–1.5, default 1) to an Edge Hz offset ('+5Hz', …)
+function edgePitch(pitch) {
+  const p = Math.min(Math.max(Number(pitch) || 1, 0.5), 1.5);
+  if (p === 1) return undefined;
+  const hz = Math.round((p - 1) * 40);
+  return `${hz >= 0 ? '+' : ''}${hz}Hz`;
+}
+
+// Free neural synthesis via Microsoft Edge TTS (no API key required).
+// Pronunciation is handled client-side (Anchor.pronounce spelling-substitution
+// dictionary) — the text arriving here is already phonetic ("en-VEE-dee-uh"),
+// so no server-side lexicons or SSML are needed. NOTE: edge-tts-universal does
+// NOT accept raw SSML input — it escapes the text and wraps it in its own SSML,
+// so injecting <phoneme> tags would be spoken aloud literally. Avoid.
+async function edgeTts(text, voice, speed, pitch) {
+  const opts = { rate: edgeRate(speed) };
+  const p = edgePitch(pitch);
+  if (p) opts.pitch = p;
+  const t = new EdgeTTS(String(text || '').slice(0, 5000), voice || TTS_DEFAULT_VOICE, opts);
   const result = await t.synthesize();
   const buf = Buffer.from(await result.audio.arrayBuffer());
   if (!buf.length) throw new Error('Edge TTS returned empty audio');
@@ -493,17 +509,18 @@ exports.handler = async (event) => {
       const text = String(body.text || '').trim();
       const voice = String(body.voice || '').trim();
       const speed = Math.min(Math.max(Number(body.speed) || 1, 0.5), 2); // honor player speed
+      const pitch = Math.min(Math.max(Number(body.pitch) || 1, 0.5), 1.5); // voice-profile energy
       if (!text) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing text' }) };
       if (!voice) return { statusCode: 400, headers, body: JSON.stringify({ ok: false, error: 'missing voice' }) };
 
-      const hash = ttsCacheKey(voice, text, String(speed));
+      const hash = ttsCacheKey(voice, text, `${speed}:${pitch}`);
       // audio bytes are cached server-side for 24h, so a short browser cache is fine (and cheaper)
       const audioHeaders = { ...headers, 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=3600' };
       const hit = ttsCache.get(hash);
       if (hit && Date.now() - hit.ts < TTS_CACHE_TTL) {
         return { statusCode: 200, headers: audioHeaders, isBase64Encoded: true, body: hit.audio.toString('base64') };
       }
-      const audio = await edgeTts(text, voice, speed);
+      const audio = await edgeTts(text, voice, speed, pitch);
       if (ttsCache.size > 200) {
         const oldest = ttsCache.keys().next().value;
         if (oldest) ttsCache.delete(oldest);
