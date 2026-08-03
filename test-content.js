@@ -67,6 +67,18 @@ const tests = [
     notExpect: ['<'],
   },
   {
+    name: 'truncated oversized page (unclosed script/style) still extracts the article',
+    fn: () => stripTags(
+      '<html><head><style>body{color:red}</style><title>x</title></head><body>' +
+      '<div id="mw-content-text"><div class="mw-parser-output">' +
+      '<p>The lede of the story goes here.</p>' +
+      '<p>More detail follows in the body.</p>' +
+      '</div></div>' +
+      '<script>window.__huge = {truncated: "'),
+    expect: ['The lede of the story goes here.', 'More detail follows in the body.'],
+    notExpect: ['window.__huge', 'color:red'],
+  },
+  {
     name: 'DDG parser extracts title/url/snippet (snippet AFTER extras, like real 2026 HTML)',
     fn: () => JSON.stringify(parseDdgHtml(
       '<div class="result results_links results_links_deep web-result "><div class="links_main links_deep result__body"><h2 class="result__title"><a rel="nofollow" class="result__a" href="https://example.com/art">Quantum <b>Computing</b> Guide</a></h2><div class="result__extras"><div class="result__extras__url">example.com</div></div><a class="result__snippet" href="https://example.com/art">A deep dive into quantum bits.</a></div></div>' +

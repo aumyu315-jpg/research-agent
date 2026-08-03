@@ -10,6 +10,7 @@ const TTS = (() => {
   const SETTINGS_KEY = 'aurora-tts';
   const CHUNK_MAX = 200;      // Chrome truncates very long utterances — chunk by sentence
   const NEURAL_CHUNK_MAX = 500; // neural synth is server-round-trip — larger chunks are fine
+  const SYNTH_TIMEOUT = 15000;  // per-chunk synthesis budget — a hung backend must fall back, not stall
 
   let settings = { voice: '', rate: 1, pitch: 1 };
 
@@ -21,6 +22,11 @@ const TTS = (() => {
   let neuralCancelled = false;
   let neuralEngine = false;    // current track uses the neural engine
   let synthCtrl = null;        // AbortController for in-flight synthesis
+  let requestToken = 0;        // bumped on every cancel — lets a stale synth request tell 'user
+                               // cancelled' apart from 'synthesis budget exceeded' (both abort)
+  let pumpGeneration = 0;      // bumped on every cancel — stale pump loops exit even if a new
+                               // track already reset neuralCancelled before they could observe it
+  let pendingPlay = null;      // reject fn for the in-flight <audio> play — settled by cancel()
 
   // ── Web Speech state ──
   let queue = [];              // [{ text, ch }] chunks pending (ch = chapter index)
@@ -189,43 +195,83 @@ const TTS = (() => {
   // ── Neural narrator engine ──
   async function synthChunk(text) {
     if (synthCtrl) synthCtrl.abort();
-    synthCtrl = new AbortController();
+    const ctrl = new AbortController();
+    synthCtrl = ctrl;
+    const tokenAtStart = requestToken;
+    const timer = setTimeout(() => ctrl.abort(), SYNTH_TIMEOUT);
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: narrator.voice, speed: settings.rate || 1, pitch: settings.pitch || 1 }),
-        signal: synthCtrl.signal,
+        signal: ctrl.signal,
       });
+      clearTimeout(timer);
       if (!res.ok) throw new Error(`TTS ${res.status}`);
       const blob = await res.blob();
       if (!blob.size) throw new Error('Empty audio');
       return blob;
     } catch (e) {
-      if (e.name === 'AbortError') throw e;
+      clearTimeout(timer);
+      if (e.name === 'AbortError') {
+        // A user cancel bumps requestToken — that abort must break the pump.
+        // If the token is unchanged, the SYNTH_TIMEOUT budget ran out (slow/cold
+        // backend): treat it as a normal failure so Web Speech takes over.
+        if (tokenAtStart !== requestToken) throw e;
+        throw new Error('TTS synthesis timed out — switching to browser voices…');
+      }
       throw e;
     }
   }
 
-  // Play one synthesized chunk through a reusable <audio> element (awaits 'ended')
+  // Play one synthesized chunk through a reusable <audio> element (awaits 'ended').
+  // `pendingPlay` lets cancel() settle the promise so the pump never deadlocks on
+  // an interrupted track — tearing down the audio element fires neither 'ended'
+  // nor 'error', which used to leave the pump awaiting forever and silently
+  // killed every later track (neuralSynth stuck true).
   function playAudioBlob(blob) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(blob);
       if (!audio) audio = new Audio();
       audio.src = url;
-      const done = () => { URL.revokeObjectURL(url); audio.removeAttribute('src'); resolve(); };
-      audio.onended = done;
-      audio.onerror = () => { URL.revokeObjectURL(url); audio.removeAttribute('src'); reject(new Error('Audio playback error')); };
-      audio.play().catch(reject);
+      let settled = false;
+      const settle = (ok, err) => {
+        if (settled) return;
+        settled = true;
+        if (pendingPlay === cancelPlay) pendingPlay = null;
+        URL.revokeObjectURL(url);
+        audio.removeAttribute('src');
+        if (ok) resolve(); else reject(err);
+      };
+      function cancelPlay() {
+        const err = new Error('Cancelled');
+        err.name = 'AbortError'; // the pump breaks on AbortError — never falls back on a track switch
+        settle(false, err);
+      }
+      pendingPlay = cancelPlay;
+      audio.onended = () => settle(true);
+      audio.onerror = () => settle(false, new Error('Audio playback error'));
+      audio.play().catch(() => settle(false, new Error('Audio play blocked')));
     });
+  }
+
+  // Start the neural pump AFTER any cancelled pump has fully unwound. A cancelled
+  // pump unwinds on a microtask (the rejected play promise), so deferring by a
+  // macrotask guarantees the new queue actually starts instead of colliding with
+  // the old one (which would leave `neuralSynth` stuck true → silent playback).
+  function startNeuralPump() {
+    setTimeout(() => {
+      if (!neuralSynth && neuralQueue.length && !neuralCancelled) pumpNeural();
+    }, 0);
   }
 
   // Pump the neural queue: synthesize → play → next, while honoring pause/cancel
   async function pumpNeural() {
     if (neuralSynth) return;
     neuralSynth = true;
+    const gen = pumpGeneration;
     try {
-      while (neuralQueue.length && !neuralCancelled) {
+      while (neuralQueue.length && !neuralCancelled && gen === pumpGeneration) {
         if (neuralPaused) { await new Promise(r => setTimeout(r, 150)); continue; }
         const chunk = neuralQueue.shift();
         if (chunk && chunk.ch !== undefined && chunk.ch !== scriptIdx && onChapter) {
@@ -234,18 +280,20 @@ const TTS = (() => {
         }
         try {
           const blob = await synthChunk(chunk.text || chunk);
-          if (neuralCancelled) continue;
+          if (gen !== pumpGeneration || neuralCancelled) break;
           await playAudioBlob(blob);
         } catch (e) {
-          if (e.name === 'AbortError' || neuralCancelled) break;
+          if (e.name === 'AbortError' || neuralCancelled || gen !== pumpGeneration) break;
           // neural path failed (no backend / quota / network) — fall back to Web Speech
           fallbackNeural(chunk.text || chunk);
           break;
         }
       }
     } finally {
+      // Always release the pump lock so the next (deferred) pump can start;
+      // only a current-generation pump may fire the track 'ended' event.
       neuralSynth = false;
-      if (!neuralCancelled && !neuralPaused && !neuralQueue.length) finishNeural();
+      if (gen === pumpGeneration && !neuralCancelled && !neuralPaused && !neuralQueue.length) finishNeural();
     }
   }
 
@@ -288,7 +336,7 @@ const TTS = (() => {
     neuralQueue = chunks;
     current = { title: opts.title || '', onStateChange: opts.onStateChange || null };
     notify('start');
-    pumpNeural();
+    startNeuralPump();
     return true;
   }
 
@@ -300,6 +348,7 @@ const TTS = (() => {
     if (!chunks.length) return false;
     cancelled = false;
     paused = false;
+    neuralEngine = false; // the current track now runs on the local engine
     queue = chunks.map(t => ({ text: t }));
     current = { title: opts.title || '', onStateChange: opts.onStateChange || null };
     speakNext();
@@ -315,7 +364,7 @@ const TTS = (() => {
     if (!chunks.length) return false;
     if (neuralEngine && narratorEnabled()) {
       neuralQueue.push(...chunks.map(t => ({ text: t, ch: scriptIdx })));
-      if (!neuralSynth) pumpNeural();
+      startNeuralPump();
       return true;
     }
     if (!supported() || cancelled) return false;
@@ -353,11 +402,12 @@ const TTS = (() => {
     } else {
       cancelled = false;
       paused = false;
+      neuralEngine = false; // the current track now runs on the local engine
       queue = chunks;
     }
     current = { title: opts.title || '', onStateChange: opts.onStateChange || null };
     notify('start');
-    if (useNeural) pumpNeural(); else speakNext();
+    if (useNeural) startNeuralPump(); else speakNext();
     if (onChapter) onChapter(startIdx); // announce the first chapter immediately
     return true;
   }
@@ -420,10 +470,14 @@ const TTS = (() => {
   }
 
   function cancel() {
+    requestToken++;            // invalidate in-flight synthesis — user-initiated abort
+    pumpGeneration++;          // invalidate any running pump loop
     neuralCancelled = true;
     neuralQueue = [];
     neuralPaused = false;
     if (synthCtrl) { try { synthCtrl.abort(); } catch { /* ignore */ } synthCtrl = null; }
+    // Settle an in-flight <audio> play so a blocked pump unwinds (neuralSynth=false)
+    if (pendingPlay) { const p = pendingPlay; pendingPlay = null; try { p(); } catch { /* ignore */ } }
     if (audio) { try { audio.pause(); audio.removeAttribute('src'); } catch { /* ignore */ } }
     if (supported()) {
       cancelled = true;

@@ -14,7 +14,7 @@ const { EdgeTTS } = require('edge-tts-universal');
 
 const CACHE_TTL = 10 * 60 * 1000;        // 10 min
 const MAX_RESULTS = 12;
-const MAX_PAGE_BYTES = 1.5 * 1024 * 1024; // 1.5 MB
+const MAX_PAGE_BYTES = 2 * 1024 * 1024;  // 2 MB (headroom for live blogs / Wikipedia)
 const MAX_TEXT = 20000;                   // chars kept per article (long articles → richer summaries)
 const FETCH_TIMEOUT = 12000;
 
@@ -119,8 +119,21 @@ async function fetchArticleText(url) {
   const res = await fetchWithTimeout(url, FETCH_TIMEOUT);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > MAX_PAGE_BYTES) throw new Error('Page too large');
-  const html = buf.toString('utf8');
+  let html;
+  if (buf.length > MAX_PAGE_BYTES) {
+    // Oversized pages (Wikipedia, live blogs) used to hard-fail with
+    // 'Page too large' — the Listen flow silently lost the full narration.
+    // Keep the head of the page instead: it holds the lede + key facts, which
+    // is exactly what the summary and narration need.
+    html = buf.slice(0, MAX_PAGE_BYTES).toString('utf8');
+    // Truncation may have cut mid-<script>/<style> — close them so their text
+    // never leaks into the extraction, then jump past the <head> to content.
+    html = html + '</script></style>';
+    const headEnd = html.search(/<\/head\s*>/i); // case-insensitive — some publishers emit </HEAD>
+    if (headEnd > 0) html = html.slice(headEnd + 7);
+  } else {
+    html = buf.toString('utf8');
+  }
   const text = stripTags(html).slice(0, MAX_TEXT);
   if (text.length < 60) throw new Error('No readable content');
 
