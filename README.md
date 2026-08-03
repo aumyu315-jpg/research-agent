@@ -2,6 +2,11 @@
 
 Search the web across **news, articles, papers & reference sources**, then get a beautifully organized **AI research report** — all free, no API keys required by default.
 
+<p align="center">
+  <a href="https://aurora-research.netlify.app"><img alt="View live site" src="https://img.shields.io/badge/View_live_site-aurora--research.netlify.app-8b7cff?style=for-the-badge&logo=netlify&logoColor=white"></a>
+  <a href="https://app.netlify.com/sites/aurora-research/deploys"><img alt="Netlify deploy status" src="https://api.netlify.com/api/v1/badges/10fbc883-55b8-41d8-8121-ac4d72975c70/deploy-status"></a>
+</p>
+
 ![stack](https://img.shields.io/badge/stack-vanilla%20JS%20%2F%20CSS%20%2F%20HTML-blueviolet)
 ![ai](https://img.shields.io/badge/AI-pollinations.ai%20free%20%2B%20optional%20Gemini-22d3ee)
 
@@ -49,7 +54,9 @@ Or run the static server and the function separately via the Netlify CLI.
 ## ☁️ Deploy (free, no API keys needed on your side)
 
 ### 1. Netlify — full features (functions need a real site)
-Netlify Drop deploys the static site but **not the serverless function**. For full-content reading, use the CLI/git flow:
+**This project is already live at [aurora-research.netlify.app](https://aurora-research.netlify.app)** — the GitHub repo (`aumyu315-jpg/research-agent`) is connected, so every push auto-deploys. `/api/*` routes to the serverless function (full-article reading, keyless neural narrator, live news).
+
+To redeploy or set up a fresh site:
 
 ```bash
 npm install
